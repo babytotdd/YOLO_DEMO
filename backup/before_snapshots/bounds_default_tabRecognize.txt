@@ -1,0 +1,18 @@
+﻿FORM client={Width=1384, Height=821} dpi=96 screen={X=0,Y=0,Width=1680,Height=1010}
+TabControl     tabMain            bounds={X=0,Y=0,Width=1384,Height=821} parent=MainForm(1384x821) text=""
+  TabPage        tabRecognize       bounds={X=4,Y=28,Width=1376,Height=789} parent=tabMain(1384x821) text="识别"
+    SplitContainer splitRec           bounds={X=0,Y=62,Width=1376,Height=727} parent=tabRecognize(1376x789) text=""
+      SplitterPanel                     bounds={X=0,Y=0,Width=587,Height=727} parent=splitRec(1376x727) text=""
+        DataGridView   grid               bounds={X=0,Y=0,Width=587,Height=727} parent=(587x727) text=""
+          [hidden] HScrollBar 
+          [hidden] VScrollBar 
+      SplitterPanel                     bounds={X=592,Y=0,Width=784,Height=727} parent=splitRec(1376x727) text=""
+        PictureBox     picRec             bounds={X=0,Y=0,Width=784,Height=727} parent=(784x727) text=""
+    [hidden] Panel pnlAdv
+    Panel          pnlTop             bounds={X=0,Y=4,Width=1376,Height=58} parent=tabRecognize(1376x789) text=""
+      Label          lblImagePath       bounds={X=11,Y=19,Width=51,Height=20} parent=pnlTop(1376x58) text="图片："
+      TextBox        tbRecImage         bounds={X=69,Y=16,Width=1147,Height=24} parent=pnlTop(1376x58) text=""
+      Button         btnSelectImage     bounds={X=531,Y=13,Width=80,Height=34} parent=pnlTop(1376x58) text="选择"
+      Button         btnRun             bounds={X=627,Y=9,Width=183,Height=42} parent=pnlTop(1376x58) text="开 始 识 别"
+      Button         btnToggleAdv       bounds={X=823,Y=13,Width=137,Height=34} parent=pnlTop(1376x58) text="▸ 详细设置"
+  [hidden] TabPage tabLearn

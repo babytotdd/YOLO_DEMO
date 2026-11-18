@@ -1,0 +1,17 @@
+* text=auto
+
+*.cs        text
+*.csproj    text
+*.slnx      text
+*.md        text
+*.json      text
+*.yaml      text
+*.txt       text
+*.bat       text eol=crlf
+
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.onnx      binary
+*.pt        binary
+*.mp4       binary

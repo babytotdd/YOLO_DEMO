@@ -1,0 +1,44 @@
+# ---- 构建产物 ----
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+*.cache
+
+# ---- 第三方克隆（上游 guojin-yan/DeploySharp，不随本仓库分发）----
+/DeploySharp/
+/DeploySharpV1/
+/DeploySharpLogs/
+
+# ---- Python 虚拟环境与缓存 ----
+tools/yolovenv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ---- 模型权重 ----
+*.onnx
+*.pt
+*.pth
+*.engine
+
+# ---- 本机数据（数据集 / 模型 / 采集样本）----
+/mydataset/
+/my_models/
+/samples/
+/captures/
+/模块训练库/
+/demo/
+/assets/yolov8n.onnx
+
+# ---- 临时文件与编辑器 ----
+/tmp/
+/.tmp_zonecheck/
+/_tmp_open2/
+/undefined/
+/.mnemon/
+*.log
+*.tmp
+Thumbs.db
+desktop.ini
