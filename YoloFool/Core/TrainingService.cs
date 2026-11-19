@@ -132,10 +132,22 @@ internal sealed class TrainingService
     public async Task<string> InitEnvironmentAsync()
     {
         if (File.Exists(AppPaths.YoloExe)) return "训练环境已就绪。";
+
         Directory.CreateDirectory(AppPaths.ToolsDir);
+
+        var python = PythonSetup.Find();
+        if (python == null)
+        {
+            Stage?.Invoke("本机没有 Python，正在自动下载安装（首次约 27MB）…");
+            var parsed = await PythonSetup.EnsureAsync(s => Stage?.Invoke(s));
+            if (!parsed.Ok) return parsed.Message;
+            python = parsed.Path;
+        }
+
         Stage?.Invoke("正在创建 Python 虚拟环境…");
-        var code = await RunAsync(FindPython(), new List<string> { "-m", "venv", AppPaths.VenvDir }, AppPaths.ToolsDir);
-        if (code != 0 || !File.Exists(AppPaths.VenvPython)) return "创建虚拟环境失败，请确认已安装 Python 3.10+ 并加入 PATH。";
+        var code = await RunAsync(python, new List<string> { "-m", "venv", AppPaths.VenvDir }, AppPaths.ToolsDir);
+        if (code != 0 || !File.Exists(AppPaths.VenvPython))
+            return "创建虚拟环境失败：确认 Python 能正常运行（" + python + "）。";
 
         Stage?.Invoke("正在安装 ultralytics（CPU 版，首次较慢）…");
         code = await RunAsync(AppPaths.VenvPython, new List<string>
@@ -164,13 +176,6 @@ internal sealed class TrainingService
             }
         }
         return "训练环境已就绪。";
-    }
-
-    private static string FindPython()
-    {
-        foreach (var p in new[] { @"C:\Python312\python.exe", @"C:\Python311\python.exe" })
-            if (File.Exists(p)) return p;
-        return "python";
     }
 
     private async Task<int> RunAsync(string exe, List<string> args, string workDir)

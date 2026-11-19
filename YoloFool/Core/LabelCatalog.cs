@@ -129,6 +129,50 @@ internal sealed class LabelCatalog
 
     public bool IsDirty => _dirty;
 
+    /// <summary>映射里有没有这个存储名（改名前查重用）。</summary>
+    public bool HasEnglish(string en)
+    {
+        var key = (en ?? "").Trim();
+        return key.Length > 0 && _enToCn.ContainsKey(key);
+    }
+
+    /// <summary>只改显示名（中文），存储名和模型都不动。</summary>
+    public void SetDisplay(string en, string displayName)
+    {
+        var key = (en ?? "").Trim();
+        if (key.Length == 0) return;
+        var cn = (displayName ?? "").Trim();
+        _enToCn[key] = cn.Length == 0 ? key : cn;
+        _dirty = true;
+    }
+
+    /// <summary>
+    /// 改存储名（训练用的 ASCII 类名）：把映射里的 key 换掉，显示名可以一起换。
+    /// 数据集里的 classes.txt / 标注框要另外由 DatasetStore.RenameClass 同步，这里只管映射表。
+    /// </summary>
+    public void RenameEnglish(string oldEn, string newEn, string newDisplayName = null)
+    {
+        var from = (oldEn ?? "").Trim();
+        var to = (newEn ?? "").Trim();
+        if (from.Length == 0) throw new ArgumentException("旧类别名不能为空", nameof(oldEn));
+        if (to.Length == 0) throw new ArgumentException("新类别名不能为空", nameof(newEn));
+
+        if (string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
+        {
+            if (newDisplayName != null) SetDisplay(to, newDisplayName);
+            return;
+        }
+        if (_enToCn.ContainsKey(to))
+            throw new InvalidOperationException("存储名“" + to + "”已经被别的标签占用，换一个。");
+
+        var hasOld = _enToCn.TryGetValue(from, out var cn);
+        if (hasOld) _enToCn.Remove(from);
+        _enToCn[to] = string.IsNullOrWhiteSpace(newDisplayName)
+            ? (string.IsNullOrWhiteSpace(cn) ? to : cn)
+            : newDisplayName.Trim();
+        _dirty = true;
+    }
+
     public void Save(bool force = false)
     {
         if (!_dirty && !force) return;

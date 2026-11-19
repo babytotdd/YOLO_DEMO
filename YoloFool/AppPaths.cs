@@ -31,6 +31,9 @@ internal static class AppPaths
     public static string ExportMapFile => Path.Combine(DatasetDir, "export_map.json");
     public static string DataYamlFile => Path.Combine(DatasetDir, "data.yaml");
     public static string TrainingDir => Path.Combine(DatasetDir, "training");
+
+    /// <summary>删除标签等破坏性操作前的自动备份目录（annotations.json / classes.txt）。</summary>
+    public static string DatasetBackupDir => Path.Combine(DatasetDir, "backup");
     public static string RunsDir => Path.Combine(DatasetDir, "runs");
 
     public static string ToolsDir => Path.Combine(WorkspaceRoot, "tools");
@@ -81,6 +84,12 @@ internal static class AppPaths
     /// <summary>拍照与录像的落盘目录。</summary>
     public static string CaptureDir => Path.Combine(WorkspaceRoot, "captures");
 
+    /// <summary>针床检测的配方与模板图（fixtures/&lt;机种&gt;/）。</summary>
+    public static string FixturesDir => Path.Combine(WorkspaceRoot, "fixtures");
+
+    /// <summary>针床定位 V2 的模型、基准与容差（fixtures_v2/机种/）。</summary>
+    public static string AnchorV2Dir => Path.Combine(WorkspaceRoot, "fixtures_v2");
+
     /// <summary>手工删除的误检样本（图片副本 + misdetect.jsonl 记录），供后续难例回收。</summary>
     public static string MisdetectDir => Path.Combine(ModelsDir, "misdetect");
 
@@ -130,6 +139,8 @@ internal static class AppPaths
             Directory.CreateDirectory(ImagesDir);
             Directory.CreateDirectory(LabelsDir);
             Directory.CreateDirectory(ModelsDir);
+            Directory.CreateDirectory(DatasetBackupDir);
+            Directory.CreateDirectory(FixturesDir);
             Directory.CreateDirectory(LogDir);
         }
         catch (Exception ex)

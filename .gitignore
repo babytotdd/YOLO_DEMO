@@ -28,6 +28,9 @@ __pycache__/
 /my_models/
 /samples/
 /captures/
+# 针床检测的机种配方/模板与 V2 标定数据（每台机器本地生成，含大图与模型）
+/fixtures/
+/fixtures_v2/
 /模块训练库/
 /demo/
 /assets/yolov8n.onnx

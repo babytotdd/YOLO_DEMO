@@ -34,6 +34,7 @@ public sealed partial class MainForm
 
         var o = dlg.Result;
         _settings.FilterEnabled = o.Enabled;
+        _settings.FilterMinConfidence = o.MinConfidencePercent;
         _settings.FilterMinArea = o.MinAreaPercent;
         _settings.FilterMaxArea = o.MaxAreaPercent;
         _settings.FilterMinAspect = o.MinAspect;

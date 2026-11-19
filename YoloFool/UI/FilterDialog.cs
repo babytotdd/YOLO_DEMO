@@ -10,7 +10,7 @@ namespace YoloFool;
 internal sealed class FilterDialog : Form
 {
     private readonly CheckBox _chkOn;
-    private readonly NumericUpDown _numMinArea, _numMaxArea, _numMinAspect, _numMaxAspect, _numIou, _numConfirm;
+    private readonly NumericUpDown _numMinConf, _numMinArea, _numMaxArea, _numMinAspect, _numMaxAspect, _numIou, _numConfirm;
     private readonly TextBox _tbMuted;
 
     public FilterOptions Result { get; private set; }
@@ -26,7 +26,7 @@ internal sealed class FilterDialog : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(560, 392);
+        ClientSize = new Size(560, 424);
 
         var table = new TableLayoutPanel
         {
@@ -43,7 +43,7 @@ internal sealed class FilterDialog : Form
 
         _chkOn = new CheckBox
         {
-            Text = "启用面积 / 长宽比 / 去重筛除",
+            Text = "启用匹配度 / 面积 / 长宽比 / 去重筛除",
             Checked = src.Enabled,
             AutoSize = true,
             Font = Theme.Body,
@@ -51,6 +51,8 @@ internal sealed class FilterDialog : Form
         };
         AddSpanRow(table, _chkOn);
 
+        AddRow(table, "匹配度 ≥ %", _numMinConf = Num((decimal)src.MinConfidencePercent, 0, 100, 0),
+            "（0=不限）", null);
         AddRow(table, "面积占比 %", _numMinArea = Num((decimal)src.MinAreaPercent, 0, 100, 1),
             "到", _numMaxArea = Num((decimal)(src.MaxAreaPercent <= 0 ? 100 : src.MaxAreaPercent), 0, 100, 1));
         AddRow(table, "长宽比 宽/高", _numMinAspect = Num((decimal)src.MinAspect, 0, 20, 1),
@@ -186,6 +188,7 @@ internal sealed class FilterDialog : Form
     private void ResetValues()
     {
         _chkOn.Checked = false;
+        _numMinConf.Value = 0;
         _numMinArea.Value = 0;
         _numMaxArea.Value = 100;
         _numMinAspect.Value = 0;
@@ -200,6 +203,7 @@ internal sealed class FilterDialog : Form
         var o = new FilterOptions
         {
             Enabled = _chkOn.Checked,
+            MinConfidencePercent = (float)_numMinConf.Value,
             MinAreaPercent = (float)_numMinArea.Value,
             MaxAreaPercent = (float)_numMaxArea.Value,
             MinAspect = (float)_numMinAspect.Value,

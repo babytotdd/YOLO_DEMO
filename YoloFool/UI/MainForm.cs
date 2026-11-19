@@ -45,6 +45,7 @@ public sealed partial class MainForm : Form
     private TabPage _pageRec;
     private TabPage _pageLearn;
     private TabPage _pageTools;
+    private TabPage _pageFixture;
 
     private TextBox _tbRecImage;
     private Button _btnSelectImage;
@@ -266,12 +267,30 @@ public sealed partial class MainForm : Form
             BackColor = Theme.Bg,
             Padding = new Padding(12, 10, 12, 10),
         };
+        _pageFixture = new TabPage("针床检测")
+        {
+            Name = "tabFixture",
+            BackColor = Theme.Bg,
+            Padding = new Padding(12, 10, 12, 10),
+        };
+        _pageAnchor = BuildAnchorPage();
+        _pageMultiCam = new TabPage("多相机 · 资源")
+        {
+            Name = "tabMultiCam",
+            BackColor = Theme.Bg,
+            Padding = new Padding(12, 10, 12, 10),
+        };
+        _pageMultiCam.Controls.Add(BuildMultiCamPage());
         _pageRec.Controls.Add(BuildCapturePage());
         _pageLearn.Controls.Add(BuildLearnPage());
         _pageTools.Controls.Add(BuildToolsPage());
+        _pageFixture.Controls.Add(BuildFixturePage());
         tabs.TabPages.Add(_pageRec);
         tabs.TabPages.Add(_pageLearn);
         tabs.TabPages.Add(_pageTools);
+        tabs.TabPages.Add(_pageFixture);
+        tabs.TabPages.Add(_pageAnchor);
+        tabs.TabPages.Add(_pageMultiCam);
         return tabs;
     }
 
@@ -1213,6 +1232,8 @@ public sealed partial class MainForm : Form
     private void WireEvents()
     {
         WireVideoEvents();
+        WireFixtureEvents();
+        WireAnchorEvents();
         _btnSelfCheck.Click += async (_, _) => await SelfCheckAsync();
         _btnSelectImage.Click += (_, _) => SelectRecognizeImage();
         // _btnRun 与 _btnStartVideo 是同一个按钮，点击由 WireVideoEvents 统一分发
@@ -2413,6 +2434,7 @@ public sealed partial class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        ShutdownMultiCam();
         ShutdownVideo();
         _svc?.Dispose();
         _recBitmap?.Dispose();

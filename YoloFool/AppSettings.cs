@@ -42,6 +42,8 @@ internal sealed class AppSettings
 
     // 结果筛除（P2）：面积/长宽比/同类去重/视频连续帧确认/类别屏蔽
     public bool FilterEnabled { get; set; }
+    /// <summary>筛除：只显示匹配度不低于该百分数的结果（0=不限）。</summary>
+    public double FilterMinConfidence { get; set; }
     public double FilterMinArea { get; set; }
     public double FilterMaxArea { get; set; } = 100;
     public double FilterMinAspect { get; set; }
@@ -97,6 +99,7 @@ internal sealed class AppSettings
         VideoTask = string.Equals(VideoTask, "det", StringComparison.OrdinalIgnoreCase) ? "det" : "seg";
         VideoConfidence = Math.Clamp(VideoConfidence, 0.01, 0.99);
         VideoClassFilter = (VideoClassFilter ?? "").Trim();
+        FilterMinConfidence = Math.Clamp(FilterMinConfidence, 0, 100);
         FilterMinArea = Math.Clamp(FilterMinArea, 0, 100);
         FilterMaxArea = Math.Clamp(FilterMaxArea <= 0 ? 100 : FilterMaxArea, 0, 100);
         if (FilterMaxArea < FilterMinArea) (FilterMinArea, FilterMaxArea) = (FilterMaxArea, FilterMinArea);

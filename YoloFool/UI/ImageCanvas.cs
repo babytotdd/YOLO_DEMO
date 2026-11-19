@@ -105,8 +105,14 @@ internal sealed class ImageCanvas : Control
     public IReadOnlyList<DetectionItem> Detections { get; set; } = Array.Empty<DetectionItem>();
     public IReadOnlyList<TrackedObject> Tracks { get; set; } = Array.Empty<TrackedObject>();
     public Func<TrackedObject, string> TrackLabel { get; set; }
+
+    /// <summary>右键单击（没有拖动）时的快速动作；返回 true 表示已处理，例如“右键保存”。</summary>
+    public Func<bool> RightClickAction { get; set; }
     public bool ShowZoomInfo { get; set; } = true;
     public bool LineEditable { get; set; }
+
+    /// <summary>画在标尺线上的文字：识别页是“计数线”，针床页是“标定线”。</summary>
+    public string LineLabel { get; set; } = "计数线";
 
     /// <summary>
     /// 右键菜单。右键拖动仍然是平移画面：只有“按下后几乎没移动就抬起”才会弹出这个菜单。
@@ -151,6 +157,13 @@ internal sealed class ImageCanvas : Control
 
     /// <summary>是否有待确认的框选（回车/右键确认）。</summary>
     public bool HasPending => _hasPending;
+
+    /// <summary>清掉待确认的框选（针床检测页画完 ROI 后直接使用，不再走命名流程）。</summary>
+    public void ClearPendingBox()
+    {
+        CancelPending();
+        Invalidate();
+    }
 
     /// <summary>是否有正在拖动的东西：待确认的新框，或某个已保存的框。</summary>
     private bool HasActive => _hasPending || _editIndex >= 0;
@@ -256,6 +269,7 @@ internal sealed class ImageCanvas : Control
             g.FillRectangle(shadow, dest.X + 4, dest.Y + 4, dest.Width, dest.Height);
         g.DrawImage(_image, dest);
 
+        bool drafting = _dragging;
         for (int i = 0; i < Boxes.Count; i++)
         {
             var b = Boxes[i];
@@ -271,14 +285,18 @@ internal sealed class ImageCanvas : Control
             var color = pending ? Color.FromArgb(0, 198, 232)
                 : sel ? Color.FromArgb(255, 186, 56) : Color.FromArgb(112, 214, 142);
             var pts = BoxClientPoints(bx, by, bw, bh, ba);
-            using var pen = new Pen(color, sel ? 3f : 2f);
-            if (pending) pen.DashStyle = DashStyle.Dash;
+            // 正在拖新框时，旧框淡成细虚线：既不抢眼，也不会挡住要框的目标。
+            bool faint = drafting && !sel;
+            var penColor = faint ? Color.FromArgb(120, 200, 220, 235) : color;
+            using var pen = new Pen(penColor, faint ? 1f : sel ? 3f : 2f);
+            if (pending || faint) pen.DashStyle = DashStyle.Dash;
             g.DrawPolygon(pen, pts);
-            if (sel)
+            if (sel && !drafting)
             {
                 using var fill = new SolidBrush(Color.FromArgb(46, color));
                 g.FillPolygon(fill, pts);
             }
+            if (faint) continue;
             var text = BoxLabel?.Invoke(b);
             if (string.IsNullOrWhiteSpace(text)) text = b.Cn;
             if (pending) text += $" ·待复核 {b.Conf:P0}";
@@ -286,7 +304,7 @@ internal sealed class ImageCanvas : Control
         }
 
         // 选中的已保存框：把手柄画出来，可以直接拖。
-        if (Editable && _editIndex < 0 && _selected >= 0 && _selected < Boxes.Count)
+        if (Editable && !drafting && _editIndex < 0 && _selected >= 0 && _selected < Boxes.Count)
         {
             var sb = Boxes[_selected];
             if (sb.W > 0 && sb.H > 0)
@@ -485,7 +503,7 @@ internal sealed class ImageCanvas : Control
         using var brush = new SolidBrush(Color.FromArgb(255, 165, 45));
         g.FillEllipse(brush, pa.X - 4, pa.Y - 4, 8, 8);
         g.FillEllipse(brush, pb.X - 4, pb.Y - 4, 8, 8);
-        var text = "计数线";
+        var text = string.IsNullOrWhiteSpace(LineLabel) ? "计数线" : LineLabel;
         var size = TextRenderer.MeasureText(g, text, TagFont);
         var x = (pa.X + pb.X) / 2f - size.Width / 2f;
         var y = (pa.Y + pb.Y) / 2f - size.Height - 8;
@@ -983,7 +1001,15 @@ internal sealed class ImageCanvas : Control
             _panning = false;
             _panButton = MouseButtons.None;
             Cursor = Cursors.Default;
-            if (showMenu) CanvasMenu.Show(this, e.Location);
+            // 平移时抓了鼠标捕获，弹菜单前必须还回去：菜单项里再弹模态对话框，
+            // 捕获没释放会让菜单和对话框互相扣住，表现为点一下就整窗卡住。
+            Capture = false;
+            if (showMenu)
+            {
+                CanvasMenu.Show(this, e.Location);
+                return;
+            }
+            if (e.Button == MouseButtons.Right && RightClickAction != null && RightClickAction()) return;
             return;
         }
         if (!_dragging || e.Button != MouseButtons.Left) return;

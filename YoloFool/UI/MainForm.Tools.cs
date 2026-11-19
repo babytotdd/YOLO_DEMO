@@ -23,6 +23,8 @@ public sealed partial class MainForm
     private Label _lblToolsDatasetStats;
     private Label _lblToolsDatasetClasses;
     private Label _lblToolsDatasetExtra;
+    private Label _lblToolsLabelsInfo;
+    private DataGridView _gridToolsLabels;
     private Label _lblToolsBackupInfo;
     private Label _lblToolsMisdetect;
     private ListBox _lvToolsBackups;
@@ -62,8 +64,14 @@ public sealed partial class MainForm
             Margin = Padding.Empty,
         };
         stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        AddRow(stack, BuildToolsFirstRunCard());
+        AddRow(stack, BuildToolsLibraryCard());
         AddRow(stack, BuildToolsModelCard());
+        AddRow(stack, BuildToolsModelClassesCard());
+        AddRow(stack, BuildToolsAnchorLibraryCard());
+        AddRow(stack, BuildToolsMachineCard());
         AddRow(stack, BuildToolsDatasetCard());
+        AddRow(stack, BuildToolsLabelCard());
         AddRow(stack, BuildToolsBackupCard());
         AddRow(stack, BuildToolsMisdetectCard());
         scroll.Controls.Add(stack);
@@ -218,6 +226,69 @@ public sealed partial class MainForm
         return card;
     }
 
+    private Control BuildToolsLabelCard()
+    {
+        var (card, body) = MakeCard("标签管理");
+        card.Name = "cardToolsLabels";
+
+        _lblToolsLabelsInfo = new Label
+        {
+            Text = "标签：还没有类别",
+            Font = Theme.Body,
+            ForeColor = Theme.Ink,
+            AutoSize = true,
+            Margin = new Padding(0, 0, 0, 6),
+        };
+        AddRow(body, _lblToolsLabelsInfo);
+
+        _gridToolsLabels = new DataGridView
+        {
+            Name = "gridToolsLabels",
+            Dock = DockStyle.Top,
+            Height = 148,
+            Margin = new Padding(0, 0, 0, 6),
+            TabIndex = 0,
+        };
+        Theme.StyleGrid(_gridToolsLabels);
+        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelName", HeaderText = "标签", FillWeight = 28 });
+        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelEn", HeaderText = "存储名（训练用）", FillWeight = 30 });
+        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelBoxes", HeaderText = "框数", FillWeight = 14 });
+        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelImages", HeaderText = "图片数", FillWeight = 14 });
+        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelPending", HeaderText = "待复核", FillWeight = 14 });
+        _gridToolsLabels.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0) OpenLabelDialog(RowLabelEn(e.RowIndex), false);
+        };
+        AddRow(body, _gridToolsLabels);
+
+        AddRow(body, Theme.Hint("删标签会把对应的标注一起从数据集里删掉（删前自动备份 annotations.json / classes.txt），当前模型不变；想让它立刻不再显示，在弹窗里勾选“同时屏蔽”。"));
+
+        var flow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            WrapContents = false,
+            BackColor = Theme.Card,
+            Margin = new Padding(0, 8, 0, 0),
+        };
+
+        var btnView = Theme.Primary("查看训练内容");
+        Stretch(btnView, 140, 34);
+        btnView.Margin = new Padding(0, 2, 8, 2);
+        btnView.Click += (_, _) => ViewSelectedLabel();
+        flow.Controls.Add(btnView);
+
+        var btnDelete = Theme.Ghost("删除这个标签");
+        Stretch(btnDelete, 132, 34);
+        btnDelete.ForeColor = Theme.Danger;
+        btnDelete.Margin = new Padding(0, 2, 8, 2);
+        btnDelete.Click += (_, _) => DeleteSelectedLabel();
+        flow.Controls.Add(btnDelete);
+
+        AddRow(body, flow);
+        return card;
+    }
+
     private Control BuildToolsBackupCard()
     {
         var (card, body) = MakeCard("模型备份");
@@ -309,8 +380,13 @@ public sealed partial class MainForm
         if (_lblToolsModelMain == null || IsDisposed) return;
         RefreshToolsModel();
         RefreshToolsDataset();
+        RefreshToolsLabels();
+        RefreshToolsModelClasses();
         RefreshToolsBackups();
         RefreshToolsMisdetect();
+        RefreshToolsLibrary();
+        RefreshToolsAnchorLibrary();
+        RefreshToolsMachines();
     }
 
     private void RefreshToolsModel()
@@ -407,6 +483,143 @@ public sealed partial class MainForm
         _lblToolsMisdetect.Text = n == 0
             ? "还没有误检样本。识别时选中结果点“删除选中”，这张图会被存下来，方便以后补标。"
             : $"已收集 {n} 条误检记录（图片副本 + misdetect.jsonl），可以拿去补标后重新训练。";
+    }
+
+    private void RefreshToolsLabels()
+    {
+        if (_gridToolsLabels == null || IsDisposed) return;
+
+        var rows = new List<ClassStat>();
+        try { rows = _store.ClassStats().ToList(); }
+        catch (Exception ex) { Log.Warn("读取标签列表失败：" + ex.Message); }
+
+        _gridToolsLabels.Rows.Clear();
+        foreach (var s in rows)
+        {
+            int i = _gridToolsLabels.Rows.Add(
+                s.Cn,
+                s.En,
+                s.Boxes,
+                s.Images,
+                s.Pending > 0 ? s.Pending.ToString() : "-");
+            var row = _gridToolsLabels.Rows[i];
+            row.Tag = s.En;
+            row.Cells[1].Style.Font = Theme.Mono;
+            if (s.Boxes == 0) row.Cells[2].Style.ForeColor = Theme.Muted;
+            if (s.Pending > 0) row.Cells[4].Style.ForeColor = Theme.Warn;
+        }
+
+        int muted = 0;
+        try { muted = _settings.MutedClasses?.Count ?? 0; } catch { }
+        _lblToolsLabelsInfo.Text = rows.Count == 0
+            ? "标签：还没有类别。到“学习训练”页框选目标并命名，标签就会出现在这里。"
+            : $"标签：共 {rows.Count} 个 · {rows.Sum(r => r.Boxes)} 个框 · {rows.Sum(r => r.Images)} 张图（同一张图可能有多个标签）"
+              + (muted > 0 ? $" · 已屏蔽 {muted} 类" : "");
+    }
+
+    private string RowLabelEn(int rowIndex)
+    {
+        if (_gridToolsLabels == null || rowIndex < 0 || rowIndex >= _gridToolsLabels.Rows.Count) return null;
+        return _gridToolsLabels.Rows[rowIndex].Tag as string;
+    }
+
+    /// <summary>存储名 → 界面上显示的中文标签名（读 labels_map.json，没映射就原样显示）。</summary>
+    private string DisplayLabelName(string en)
+    {
+        if (string.IsNullOrWhiteSpace(en)) return "";
+        try
+        {
+            int id = -1;
+            for (int i = 0; i < _store.Classes.Count; i++)
+            {
+                if (!string.Equals(_store.Classes[i], en, StringComparison.OrdinalIgnoreCase)) continue;
+                id = i;
+                break;
+            }
+            return id < 0 ? en : _store.Labels.Display(en, id);
+        }
+        catch { return en; }
+    }
+
+    private bool IsLabelMuted(string displayName) =>
+        !string.IsNullOrWhiteSpace(displayName) &&
+        (_settings.MutedClasses?.Contains(displayName, StringComparer.OrdinalIgnoreCase) ?? false);
+
+    private void ViewSelectedLabel()
+    {
+        var en = RowLabelEn(_gridToolsLabels?.CurrentRow?.Index ?? -1);
+        if (string.IsNullOrEmpty(en))
+        {
+            MessageBox.Show(this, "先在标签列表里选中一个标签。", "标签管理",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        OpenLabelDialog(en, false);
+    }
+
+    private void DeleteSelectedLabel()
+    {
+        var en = RowLabelEn(_gridToolsLabels?.CurrentRow?.Index ?? -1);
+        if (string.IsNullOrEmpty(en))
+        {
+            MessageBox.Show(this, "先在标签列表里选中要删的标签。", "标签管理",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        OpenLabelDialog(en, true);
+    }
+
+    /// <summary>标签详情窗口：看训练内容 + 缩略图，底部可以删掉这个标签。</summary>
+    private void OpenLabelDialog(string en, bool focusDelete)
+    {
+        if (string.IsNullOrWhiteSpace(en)) return;
+        var cn = DisplayLabelName(en);
+        using var dlg = new LabelDetailDialog(_store, en, cn, IsLabelMuted(cn));
+        var r = dlg.ShowDialog(this);
+        if (dlg.Deleted) AfterLabelRemoved(en, dlg.Muted);
+        else if (focusDelete && r != DialogResult.OK)
+            _lblStatus.Text = $"已取消删除标签“{cn}”，数据集没有改动。";
+    }
+
+    /// <summary>删完标签后的收尾：可选屏蔽、刷新界面、重建训练集、把结果交代清楚。</summary>
+    private void AfterLabelRemoved(string en, bool mute)
+    {
+        var cn = DisplayLabelName(en);
+        if (mute) MuteClass(cn);
+
+        try { RefreshDatasetStats(); } catch { }
+        RefreshToolsPage();
+        RefreshFilterBadge();
+        if (_lastResult != null && !VideoRunning) ShowDetections(_lastResult, _recPath);
+
+        var rebuilt = "";
+        try
+        {
+            var set = _store.BuildTrainingView();
+            _lblToolsDatasetExtra.Text = $"训练集：{set.TrainCount} 张训练 / {set.ValCount} 张验证 · {set.ClassCount} 类 → {set.DataYaml}";
+            rebuilt = "训练集已同步重建。";
+        }
+        catch (Exception ex)
+        {
+            _lblToolsDatasetExtra.Text = "训练集还没重建：" + ex.Message;
+            rebuilt = "训练集需要你手动点“重建训练集”。";
+        }
+
+        _lblStatus.Text = $"已删除标签“{cn}”";
+        MessageBox.Show(this,
+            $"已从数据集删除标签“{cn}”。\n\n{rebuilt}\n\n备份在：\n{AppPaths.DatasetBackupDir}\n\n当前模型文件没有变，重新训练之后它才会彻底不再出现这个类。"
+            + (mute ? "\n\n已加入屏蔽名单：现在的模型立刻不再显示这个类。" : ""),
+            "标签管理", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void MuteClass(string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName)) return;
+        _settings.MutedClasses ??= new List<string>();
+        if (!_settings.MutedClasses.Contains(displayName, StringComparer.OrdinalIgnoreCase))
+            _settings.MutedClasses.Add(displayName);
+        _settings.Save();
+        Log.Info("屏蔽类别：" + displayName);
     }
 
     // ---------------------------------------------------------------- 操作

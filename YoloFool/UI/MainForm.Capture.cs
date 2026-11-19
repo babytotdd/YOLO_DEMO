@@ -705,18 +705,30 @@ public sealed partial class MainForm
     }
 
     /// <summary>画布右键菜单：保存原图 / 保存画面（带识别框）/ 复制 / 适应窗口。</summary>
-    private ContextMenuStrip BuildImageContextMenu()
+    private ContextMenuStrip BuildImageContextMenu() =>
+        BuildImageContextMenu(_picRec, CurrentSourceBitmap, text =>
+        {
+            if (_lblStatus != null) _lblStatus.Text = text;
+        }, () => _recPath);
+
+    /// <summary>同一套右键菜单，换一个画布也能用（识别测试页 / 针床检测页）。</summary>
+    /// <param name="busy">保存对话框开/关时回调：针床页用来暂停实时预览。</param>
+    private ContextMenuStrip BuildImageContextMenu(ImageCanvas canvas, Func<Bitmap> source,
+        Action<string> status, Func<string> pathProvider = null, Action<bool> busy = null)
     {
         var menu = new ContextMenuStrip { Font = Theme.Body, ShowImageMargin = false };
-        menu.Items.Add(new ToolStripMenuItem("保存图片…（原图）", null, (_, _) => SaveCurrentImage(true))
+        menu.Items.Add(new ToolStripMenuItem("保存图片…（原图）", null,
+            (_, _) => SaveImageAs(canvas, source, true, status, pathProvider?.Invoke(), busy))
         {
             ShortcutKeyDisplayString = "Ctrl+S",
         });
-        menu.Items.Add(new ToolStripMenuItem("保存画面…（带识别框）", null, (_, _) => SaveCurrentImage(false)));
+        menu.Items.Add(new ToolStripMenuItem("保存画面…（带识别框）", null,
+            (_, _) => SaveImageAs(canvas, null, false, status, null, busy)));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("复制图片", null, (_, _) => CopyCurrentImage()));
-        menu.Items.Add(new ToolStripMenuItem("适应窗口", null, (_, _) => _picRec?.Fit()));
-        menu.Opening += (_, e) => e.Cancel = CurrentSourceBitmap() == null;
+        menu.Items.Add(new ToolStripMenuItem("复制图片", null,
+            (_, _) => CopyImageAs(source?.Invoke(), status)));
+        menu.Items.Add(new ToolStripMenuItem("适应窗口", null, (_, _) => canvas?.Fit()));
+        menu.Opening += (_, e) => e.Cancel = source?.Invoke() == null && canvas?.Image == null;
         return menu;
     }
 
@@ -737,18 +749,42 @@ public sealed partial class MainForm
     }
 
     /// <summary>plain=true 存原图；false 存画布所见（带框/掩码/标签）。</summary>
-    private void SaveCurrentImage(bool plain)
+    private void SaveCurrentImage(bool plain) =>
+        SaveImageAs(_picRec, CurrentSourceBitmap, plain, text =>
+        {
+            if (_lblStatus != null) _lblStatus.Text = text;
+        }, _recPath);
+
+    /// <summary>同一套保存逻辑，给不同的画布用（识别测试页 / 针床检测页）。</summary>
+    /// <param name="busy">对话框打开/关闭时回调：针床页用来暂停实时预览。</param>
+    private void SaveImageAs(ImageCanvas canvas, Func<Bitmap> source, bool plain, Action<string> status,
+        string sourcePath = null, Action<bool> busy = null)
     {
         Bitmap shot = null;
         try
         {
-            shot = plain ? CurrentSourceBitmap() : RenderCanvasBitmap();
-            if (shot == null)
+            Log.Info($"保存图片：进入 page={canvas?.Name ?? "null"} plain={plain}");
+            // 源图可能就是画布上正在显示的那一张：针床页实时预览每 66ms 换帧并释放旧帧，
+            // 而模态对话框期间定时器照跳，所以必须先克隆一份自己持有，否则会被换帧释放掉。
+            var src = plain ? source?.Invoke() : RenderCanvasBitmap(canvas);
+            if (src == null)
             {
+                Log.Info("保存图片：没有可用图片");
                 MessageBox.Show(this, "当前画面上还没有图片。", "保存图片",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+            shot = CloneBitmap(src);
+            if (!plain) src.Dispose();
+            if (shot == null)
+            {
+                Log.Warn("保存图片：位图克隆失败，源图可能已被释放");
+                MessageBox.Show(this, "保存失败：画面图片已失效，请稍后再试。", "保存图片",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            Log.Info($"保存图片：已取图 {shot.Width}×{shot.Height}");
+
             using var dialog = new SaveFileDialog
             {
                 Title = plain ? "保存图片" : "保存画面",
@@ -756,12 +792,25 @@ public sealed partial class MainForm
                 FilterIndex = 1,
                 AddExtension = true,
                 DefaultExt = "png",
-                FileName = DefaultImageFileName(plain),
+                FileName = DefaultImageFileName(plain, sourcePath),
                 InitialDirectory = Directory.Exists(AppPaths.CaptureDir) ? AppPaths.CaptureDir : AppPaths.Root,
             };
-            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            Log.Info("保存图片：打开另存为对话框");
+            DialogResult result;
+            if (busy != null) busy(true);
+            try
+            {
+                result = dialog.ShowDialog(this);
+            }
+            finally
+            {
+                if (busy != null) busy(false);
+            }
+            Log.Info($"保存图片：对话框返回 {result}");
+            if (result != DialogResult.OK) return;
             SaveBitmapTo(shot, dialog.FileName);
-            if (_lblStatus != null) _lblStatus.Text = "已保存：" + Path.GetFileName(dialog.FileName);
+            Log.Info("保存图片：已写盘 " + dialog.FileName);
+            status?.Invoke("已保存：" + Path.GetFileName(dialog.FileName));
         }
         catch (Exception ex)
         {
@@ -771,17 +820,32 @@ public sealed partial class MainForm
         }
         finally
         {
-            if (!plain) shot?.Dispose();
+            shot?.Dispose();
         }
     }
 
-    private Bitmap RenderCanvasBitmap()
+    /// <summary>独立克隆一张位图，和源图彻底解耦；源图已释放时返回 null 而不是抛异常。</summary>
+    private static Bitmap CloneBitmap(Bitmap bitmap)
     {
-        if (_picRec == null || _picRec.Width <= 0 || _picRec.Height <= 0) return null;
-        var bmp = new Bitmap(_picRec.Width, _picRec.Height);
+        if (bitmap == null) return null;
         try
         {
-            _picRec.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
+            return new Bitmap(bitmap);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("克隆图片失败", ex);
+            return null;
+        }
+    }
+
+    private Bitmap RenderCanvasBitmap(ImageCanvas canvas)
+    {
+        if (canvas == null || canvas.Width <= 0 || canvas.Height <= 0) return null;
+        var bmp = new Bitmap(canvas.Width, canvas.Height);
+        try
+        {
+            canvas.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
             return bmp;
         }
         catch (Exception ex)
@@ -792,11 +856,11 @@ public sealed partial class MainForm
         }
     }
 
-    private string DefaultImageFileName(bool plain)
+    private string DefaultImageFileName(bool plain, string path)
     {
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-        if (plain && !string.IsNullOrEmpty(_recPath) && File.Exists(_recPath))
-            return Path.GetFileNameWithoutExtension(_recPath) + "-" + stamp + Path.GetExtension(_recPath);
+        if (plain && !string.IsNullOrEmpty(path) && File.Exists(path))
+            return Path.GetFileNameWithoutExtension(path) + "-" + stamp + Path.GetExtension(path);
         return (plain ? "图片-" : "画面-") + stamp + ".png";
     }
 
@@ -810,15 +874,20 @@ public sealed partial class MainForm
         copy.Save(path, format);
     }
 
-    private void CopyCurrentImage()
+    private void CopyCurrentImage() =>
+        CopyImageAs(CurrentSourceBitmap(), text =>
+        {
+            if (_lblStatus != null) _lblStatus.Text = text;
+        });
+
+    private void CopyImageAs(Bitmap src, Action<string> status)
     {
-        var src = CurrentSourceBitmap();
         if (src == null) return;
         try
         {
             using var copy = new Bitmap(src);
             Clipboard.SetImage(copy);
-            if (_lblStatus != null) _lblStatus.Text = "图片已复制到剪贴板";
+            status?.Invoke("图片已复制到剪贴板");
         }
         catch (Exception ex)
         {

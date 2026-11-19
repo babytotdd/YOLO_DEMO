@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace YoloFool;
 
-/// <summary>结果筛除条件：面积占比、长宽比、同类重叠去重、视频连续帧确认、类别屏蔽。</summary>
+/// <summary>结果筛除条件：匹配度下限、面积占比、长宽比、同类重叠去重、视频连续帧确认、类别屏蔽。</summary>
 internal sealed class FilterOptions
 {
     public bool Enabled { get; set; }
@@ -14,9 +14,13 @@ internal sealed class FilterOptions
     public float MaxAspect { get; set; }
     public float DedupIou { get; set; } = 0.6f;
     public int ConfirmFrames { get; set; } = 3;
+    /// <summary>匹配度下限（百分数 0-100），0 表示不限。</summary>
+    public float MinConfidencePercent { get; set; }
     public HashSet<string> Muted { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public bool HasGeometry => MinAreaPercent > 0 || MaxAreaPercent < 100f || MinAspect > 0 || MaxAspect > 0;
+
+    public bool HasConfidence => MinConfidencePercent > 0;
 
     public static FilterOptions FromSettings(AppSettings s)
     {
@@ -30,6 +34,7 @@ internal sealed class FilterOptions
         o.MaxAspect = (float)Math.Clamp(s.FilterMaxAspect, 0, 20);
         o.DedupIou = (float)Math.Clamp(s.FilterDedupIou, 0, 0.95);
         o.ConfirmFrames = Math.Clamp(s.FilterConfirmFrames, 1, 30);
+        o.MinConfidencePercent = (float)Math.Clamp(s.FilterMinConfidence, 0, 100);
         foreach (var m in s.MutedClasses ?? new List<string>())
             if (!string.IsNullOrWhiteSpace(m)) o.Muted.Add(m.Trim());
         return o;
@@ -40,6 +45,7 @@ internal sealed class FilterOptions
         get
         {
             var parts = new List<string>();
+            if (MinConfidencePercent > 0) parts.Add($"匹配度 ≥{MinConfidencePercent:F0}%");
             if (MinAreaPercent > 0 || MaxAreaPercent < 100f)
                 parts.Add($"面积 {MinAreaPercent:F1}%–{MaxAreaPercent:F0}%");
             if (MinAspect > 0 || MaxAspect > 0)
@@ -65,6 +71,9 @@ internal static class ResultFilter
             list = list.Where(i => !IsMuted(i, o.Muted, display)).ToList();
 
         if (!o.Enabled) return list;
+
+        if (o.HasConfidence)
+            list = list.Where(i => (double)i.Confidence * 100.0 >= o.MinConfidencePercent).ToList();
 
         if (o.HasGeometry)
             list = list.Where(i => PassesGeometry(i, o)).ToList();

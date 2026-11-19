@@ -49,6 +49,31 @@ internal sealed class BoxRecord
 
 internal sealed record TrainingSetInfo(string DataYaml, int TrainCount, int ValCount, int ClassCount, IReadOnlyList<string> ClassNames);
 
+/// <summary>“标签管理”列表里的一行：一个类别有多少框、出现在多少张图上。</summary>
+internal sealed record ClassStat(string En, string Cn, int Id, int Boxes, int Images, int Pending);
+
+/// <summary>某个标签用到的训练内容（一张图片一条），用于弹窗里的列表 + 缩略图预览。</summary>
+internal sealed record ClassImage(string ImagePath, string ExportName, int Boxes, int Pending, bool Exported)
+{
+    [JsonIgnore]
+    public string FileName => Path.GetFileName(ImagePath);
+
+    /// <summary>优先用已导出到 mydataset/images 的那份（训练真正用的），没有就用原图。</summary>
+    [JsonIgnore]
+    public string PreviewPath => Exported && ExportName.Length > 0
+        ? Path.Combine(AppPaths.ImagesDir, ExportName)
+        : ImagePath;
+
+    [JsonIgnore]
+    public string ExportText => Exported && ExportName.Length > 0 ? ExportName : "（未导出）";
+}
+
+/// <summary>删除标签的结果，用于给用户交代“删了多少、备份在哪”。</summary>
+internal sealed record ClassRemovalResult(string En, string Cn, int Boxes, int Images, string BackupFile);
+
+/// <summary>改标签名的结果：旧名 / 新名 / 动了多少框和图片 / 备份在哪。</summary>
+internal sealed record ClassRenameResult(string OldEn, string NewEn, string Cn, int Boxes, int Images, string BackupFile);
+
 /// <summary>
 /// 数据集仓库（最核心的“学习”能力）：
 /// - 框选命名后立即把图片复制到 mydataset\images，并重写该图的 YOLO txt（归一化 cx cy w h）；
@@ -281,6 +306,233 @@ internal sealed class DatasetStore
             d[b.En] = d.TryGetValue(b.En, out var n) ? n + 1 : 1;
         }
         return d;
+    }
+
+    /// <summary>标签管理用：每个类别的框数 / 图片数 / 待复核框数，按类别 id 顺序排。</summary>
+    public IReadOnlyList<ClassStat> ClassStats()
+    {
+        var boxes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var images = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var pending = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var kv in _boxes)
+        {
+            if (!File.Exists(kv.Key)) continue;
+            foreach (var g in kv.Value.Where(b => !string.IsNullOrWhiteSpace(b.En)).GroupBy(b => b.En, StringComparer.OrdinalIgnoreCase))
+            {
+                boxes[g.Key] = boxes.TryGetValue(g.Key, out var n) ? n + g.Count() : g.Count();
+                images[g.Key] = images.TryGetValue(g.Key, out var m) ? m + 1 : 1;
+                int p = g.Count(b => b.Pending);
+                if (p > 0) pending[g.Key] = pending.TryGetValue(g.Key, out var q) ? q + p : p;
+            }
+        }
+
+        var list = new List<ClassStat>();
+        for (int i = 0; i < _classes.Count; i++)
+        {
+            var en = _classes[i];
+            string cn;
+            try { cn = _labels.Display(en, i); } catch { cn = en; }
+            list.Add(new ClassStat(
+                en, cn, i,
+                boxes.TryGetValue(en, out var b) ? b : 0,
+                images.TryGetValue(en, out var im) ? im : 0,
+                pending.TryGetValue(en, out var pd) ? pd : 0));
+        }
+
+        // classes.txt 里没有（但标注里存在）的类别也列出来，避免"看不见却删不掉"
+        foreach (var en in boxes.Keys.Where(k => !_classes.Contains(k, StringComparer.OrdinalIgnoreCase)).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        {
+            string cn;
+            try { cn = _labels.Display(en, -1); } catch { cn = en; }
+            list.Add(new ClassStat(en, cn, -1, boxes[en], images.TryGetValue(en, out var im) ? im : 0,
+                pending.TryGetValue(en, out var pd) ? pd : 0));
+        }
+        return list;
+    }
+
+    /// <summary>某个标签用到的所有图片（含框数与是否已导出），按文件名排序。</summary>
+    public IReadOnlyList<ClassImage> ImagesOfClass(string en)
+    {
+        var target = (en ?? "").Trim();
+        var list = new List<ClassImage>();
+        if (target.Length == 0) return list;
+
+        foreach (var kv in _boxes.OrderBy(k => Path.GetFileName(k.Key), StringComparer.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(kv.Key)) continue;
+            var mine = kv.Value.Where(b => string.Equals(b.En, target, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (mine.Count == 0) continue;
+
+            _exports.TryGetValue(kv.Key, out var exported);
+            var name = exported ?? "";
+            bool exists = name.Length > 0 && File.Exists(Path.Combine(AppPaths.ImagesDir, name));
+            list.Add(new ClassImage(kv.Key, name, mine.Count, mine.Count(b => b.Pending), exists));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// 从数据集里彻底删掉一个标签：先备份 annotations.json / classes.txt，
+    /// 再删掉这个类的所有框、把类别从 classes.txt 里去掉（后面的 id 依次前移），
+    /// 最后重写所有图片的标签文件。当前模型文件不动，所以重训之前它还会报这个类。
+    /// </summary>
+    public ClassRemovalResult RemoveClass(string en)
+    {
+        var target = (en ?? "").Trim();
+        int idx = _classes.FindIndex(c => string.Equals(c, target, StringComparison.OrdinalIgnoreCase));
+        if (idx < 0) throw new InvalidOperationException("标签不存在：" + target);
+
+        var cls = _classes[idx];
+        string cn;
+        try { cn = _labels.Display(cls, idx); } catch { cn = cls; }
+
+        var backup = BackupAnnotationFiles(cls);
+
+        int imgCount = _boxes.Values.Count(v => v.Any(b => string.Equals(b.En, cls, StringComparison.OrdinalIgnoreCase)));
+        int boxCount = 0;
+        foreach (var list in _boxes.Values)
+            boxCount += list.RemoveAll(b => string.Equals(b.En, cls, StringComparison.OrdinalIgnoreCase));
+
+        _classes.RemoveAt(idx);
+        _classesDirty = true;
+        Save();
+        Log.Info($"删除标签：{cls}（去掉 {boxCount} 个框 / {imgCount} 张图），备份 {backup}");
+
+        // id 变了，所有导出过的图片都要重写标签；删完没框的图直接移出数据集
+        foreach (var key in _boxes.Keys.ToList())
+        {
+            if (_boxes[key].Any(Exportable) && File.Exists(key)) SyncImage(key);
+            else RemoveExported(key);
+        }
+        Save();
+
+        return new ClassRemovalResult(cls, cn, boxCount, imgCount, backup);
+    }
+
+    /// <summary>
+    /// 给一个类别改名：存储名（训练用 ASCII）和显示名都可以换。
+    /// 先备份 annotations.json / classes.txt，再同步 classes.txt、所有标注框的 En/Cn、labels_map.json，
+    /// 最后重写带这个类的图片的 YOLO 标签。当前模型文件不动，重训后模型里的类名才会跟着变。
+    /// </summary>
+    public ClassRenameResult RenameClass(string en, string newEn, string newDisplayName = null)
+    {
+        var target = (en ?? "").Trim();
+        int idx = _classes.FindIndex(c => string.Equals(c, target, StringComparison.OrdinalIgnoreCase));
+        if (idx < 0) throw new InvalidOperationException("数据集里没有这个类别：" + target);
+
+        var oldEn = _classes[idx];
+        var to = (newEn ?? "").Trim();
+        if (to.Length == 0) throw new ArgumentException("新的存储名不能为空", nameof(newEn));
+        if (!IsStorageName(to))
+            throw new InvalidOperationException("存储名只能用英文字母、数字、下划线或连字符（训练用的类名必须是 ASCII）。");
+
+        bool same = string.Equals(oldEn, to, StringComparison.OrdinalIgnoreCase);
+        if (!same)
+        {
+            int clash = _classes.FindIndex(c => string.Equals(c, to, StringComparison.OrdinalIgnoreCase));
+            if (clash >= 0) throw new InvalidOperationException("存储名“" + to + "”已经被另一个类别占用（序号 " + clash + "）。");
+            if (_labels.HasEnglish(to)) throw new InvalidOperationException("显示名映射里已经有“" + to + "”，换一个存储名。");
+        }
+
+        string cn;
+        try { cn = _labels.Display(oldEn, idx); } catch { cn = oldEn; }
+        if (!string.IsNullOrWhiteSpace(newDisplayName)) cn = newDisplayName.Trim();
+
+        var backup = BackupAnnotationFiles(oldEn);
+
+        int boxCount = 0;
+        int imgCount = 0;
+        foreach (var kv in _boxes)
+        {
+            bool touched = false;
+            foreach (var b in kv.Value)
+            {
+                if (!string.Equals(b.En, oldEn, StringComparison.OrdinalIgnoreCase)) continue;
+                b.En = to;
+                b.Cn = cn;
+                boxCount++;
+                touched = true;
+            }
+            if (touched) imgCount++;
+        }
+
+        _classes[idx] = to;
+        _classesDirty = true;
+
+        _labels.RenameEnglish(oldEn, to, cn);
+        _labels.Save();
+
+        Save();
+
+        // 类名（或 id 顺序）可能影响标签文件内容，带这个类的图片全部重写一遍
+        foreach (var key in _boxes.Keys.ToList())
+        {
+            if (_boxes[key].Any(b => string.Equals(b.En, to, StringComparison.OrdinalIgnoreCase)) && File.Exists(key))
+                SyncImage(key);
+        }
+        Save();
+
+        Log.Info($"标签改名：{oldEn} → {to}（显示名 {cn}，{boxCount} 个框 / {imgCount} 张图），备份 {backup}");
+        return new ClassRenameResult(oldEn, to, cn, boxCount, imgCount, backup);
+    }
+
+    /// <summary>训练用的存储名：ASCII 字母/数字/下划线/连字符。</summary>
+    public static bool IsStorageName(string name)
+    {
+        var s = (name ?? "").Trim();
+        if (s.Length == 0) return false;
+        foreach (var ch in s)
+        {
+            if (ch >= 128) return false;
+            if (!char.IsLetterOrDigit(ch) && ch != '_' && ch != '-') return false;
+        }
+        return true;
+    }
+
+    /// <summary>删除标签前把 annotations.json / classes.txt 复制一份到 mydataset/backup。</summary>
+    private static string BackupAnnotationFiles(string cls)
+    {
+        var copy = "<没有可备份的文件>";
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DatasetBackupDir);
+            var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var safe = new StringBuilder();
+            foreach (var ch in cls)
+                safe.Append(char.IsLetterOrDigit(ch) && ch < 128 ? ch : '_');
+            var tag = safe.ToString().Trim('_');
+            if (tag.Length == 0) tag = "class";
+
+            if (File.Exists(AppPaths.AnnotationsFile))
+            {
+                var dst = UniquePath(Path.Combine(AppPaths.DatasetBackupDir, $"annotations_{stamp}_{tag}.json"));
+                File.Copy(AppPaths.AnnotationsFile, dst);
+                copy = dst;
+            }
+            if (File.Exists(AppPaths.ClassesFile))
+            {
+                var dst = UniquePath(Path.Combine(AppPaths.DatasetBackupDir, $"classes_{stamp}_{tag}.txt"));
+                File.Copy(AppPaths.ClassesFile, dst);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("备份标注文件失败", ex);
+        }
+        return copy;
+    }
+
+    private static string UniquePath(string path)
+    {
+        if (!File.Exists(path)) return path;
+        var dir = Path.GetDirectoryName(path) ?? ".";
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+        int i = 1;
+        string p;
+        do { p = Path.Combine(dir, $"{stem}_{++i}{ext}"); } while (File.Exists(p));
+        return p;
     }
 
     /// <summary>把当前标注整理成 YOLO 训练目录，返回 data.yaml 等信息。</summary>
