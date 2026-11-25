@@ -15,10 +15,6 @@ namespace YoloFool;
 /// </summary>
 public sealed partial class MainForm
 {
-    private Button _btnAutoLabel;
-    private Button _btnReview;
-    private Button _btnClearAuto;
-    private Label _lblReviewHint;
     private bool _autoLabelBusy;
     private bool _reviewing;
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -37,79 +38,32 @@ public sealed partial class MainForm : Form
     private bool _splitInit;
     private bool _learnSplitInit;
 
-    private Label _lblModelStatus;
-    private Label _lblModelSub;
-    private Button _btnSelfCheck;
+    // 外壳控件（_tabs / 六个页签 / 顶栏 / 状态栏）由 MainForm.Designer.cs 创建并声明。
 
-    private TabControl _tabs;
-    private TabPage _pageRec;
-    private TabPage _pageLearn;
-    private TabPage _pageTools;
-    private TabPage _pageFixture;
+    private Button _btnRun; // 与设计器里的 _btnStartVideo 是同一个按钮（运行期别名）
 
-    private TextBox _tbRecImage;
-    private Button _btnSelectImage;
-    private Button _btnRun;
-    private Button _btnClear;
-    private Button _btnToggleAdv;
-    private Panel _pnlAdv;
-    private TextBox _tbAdvModel;
-    private Button _btnAdvModel;
-    private Button _btnVerifySave;
-    private Button _btnResetAdv;
-    private ComboBox _cboKind;
-    private ComboBox _cboDevice;
-    private ComboBox _cboProvider;
-    private NumericUpDown _numConf;
-    private NumericUpDown _numNms;
-    private Label _lblAdvInfo;
-    private Label _lblAdvProbe;
-    private SplitContainer _splitRec;
-    private ImageCanvas _picRec;
-    private DataGridView _grid;
-    private Label _lblResultStats;
-
-    private TextBox _tbLearnImage;
-    private Button _btnOpenLearn;
-    private Button _btnOpenFolder;
-    private Button _btnClearLearn;
-    private Button _btnPrevImage;
-    private Button _btnNextImage;
-    private ListView _lvImages;
-    private Label _lblImageListInfo;
     private readonly List<string> _imageFiles = new();
     private bool _syncingImages;
-    private SplitContainer _splitLearn;
-    private ImageCanvas _picLearn;
-    private ListView _lvBoxes;
-    private Button _btnDelBox;
-    private Button _btnRenameBox;
-    private Button _btnReexport;
-    private Label _lblAnnoInfo;
-    private Label _lblDatasetStats;
-    private Button _lnkOpenDataset;
-    private NumericUpDown _numEpochs;
-    private NumericUpDown _numBatch;
-    private ComboBox _cboImgSize;
-    private Button _btnInitEnv;
-    private Button _btnTrain;
-    private Button _btnCancelTrain;
-    private ProgressBar _pbTrain;
-    private Label _lblTrainStage;
-    private TextBox _txtTrainLog;
 
-    private Label _lblStatus;
-    private Label _lblStatusRight;
 
     public MainForm()
     {
+        InitializeComponent();
+
+        // 设计器只加载布局：不要在这里访问磁盘、数据集或屏幕。
+        if (IsDesignTime) return;
+
         _settings = AppSettings.Load();
         _labels = LabelCatalog.Load();
         _store = DatasetStore.Load(_labels);
         AppPaths.EnsureDirectories();
         _advExpanded = _settings.AdvancedExpanded;
 
-        BuildUi();
+        BuildPageContents();
+
+        var wa = Screen.PrimaryScreen == null ? new Rectangle(0, 0, 1366, 768) : Screen.PrimaryScreen.WorkingArea;
+        Size = new Size(Math.Min(1320, Math.Max(1000, wa.Width - 40)), Math.Min(880, Math.Max(620, wa.Height - 40)));
+
         WireEvents();
 
         Load += MainForm_Load;
@@ -117,1011 +71,73 @@ public sealed partial class MainForm : Form
         FormClosing += OnFormClosing;
     }
 
+    /// <summary>Visual Studio 设计器宿主（devenv / DesignToolsServer）里为 true。</summary>
+    internal static bool IsDesignTime
+    {
+        get
+        {
+            if (LicenseManager.UsageMode == LicenseUsageMode.Designtime) return true;
+            var name = Process.GetCurrentProcess().ProcessName;
+            return name.Contains("devenv", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("DesignToolsServer", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("XDesProc", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     // ---------------------------------------------------------------- layout
 
-    private void BuildUi()
+    /// <summary>
+    /// 页签内部内容按运行期数据生成（相机、模型库、机种等），
+    /// 窗体外壳与六个页签由 MainForm.Designer.cs 创建，可直接在设计器里调整。
+    /// </summary>
+    private void BuildPageContents()
     {
-        Text = "YoloFool · 傻瓜式视觉识别";
-        Font = Theme.Body;
-        BackColor = Theme.Bg;
-        DoubleBuffered = true;
-        AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        MinimumSize = new Size(1000, 620);
-
-        var wa = Screen.PrimaryScreen == null ? new Rectangle(0, 0, 1366, 768) : Screen.PrimaryScreen.WorkingArea;
-        Size = new Size(Math.Min(1320, Math.Max(1000, wa.Width - 40)), Math.Min(880, Math.Max(620, wa.Height - 40)));
-        StartPosition = FormStartPosition.CenterScreen;
-
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3,
-            BackColor = Theme.Bg,
-            Margin = Padding.Empty,
-            Padding = Padding.Empty,
-        };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30f));
-
-        root.Controls.Add(BuildHeader(), 0, 0);
-        _tabs = BuildTabs();
-        _tabs.Margin = new Padding(10, 8, 10, 6);
-        root.Controls.Add(_tabs, 0, 1);
-        root.Controls.Add(BuildStatusBar(), 0, 2);
-        Controls.Add(root);
+        InitializeCapturePage();
+        InitializeLearnPage();
+        InitializeToolsPage();
+        InitializeFixturePage();
+        InitializeAnchorPage();
+        InitializeMultiCamPage();
     }
 
-    private Control BuildHeader()
+    private void pnlHeader_Paint(object sender, PaintEventArgs e)
     {
-        var header = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 3,
-            RowCount = 1,
-            BackColor = Color.White,
-            Padding = new Padding(20, 10, 20, 10),
-            Margin = Padding.Empty,
-        };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        header.Paint += (_, e) =>
-        {
-            using var pen = new Pen(Theme.Border);
-            e.Graphics.DrawLine(pen, 0, header.Height - 1, header.Width, header.Height - 1);
-        };
-
-        var titleStack = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = Padding.Empty,
-        };
-        titleStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        titleStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        titleStack.Controls.Add(new Label
-        {
-            Text = "YOLO 傻瓜识别",
-            Font = Theme.Title,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 2),
-        }, 0, 0);
-        titleStack.Controls.Add(Theme.Hint("默认值按本机自动验证；需要时再展开“详细设置”。"), 0, 1);
-
-        var modelStack = new TableLayoutPanel
-        {
-            AutoSize = true,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = new Padding(0, 2, 12, 0),
-        };
-        _lblModelStatus = new Label
-        {
-            Text = "● 正在自检…",
-            Font = Theme.BodyBold,
-            ForeColor = Theme.Warn,
-            AutoSize = true,
-            Anchor = AnchorStyles.Right,
-            TextAlign = ContentAlignment.MiddleRight,
-            Margin = Padding.Empty,
-        };
-        _lblModelSub = new Label
-        {
-            Text = "",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = false,
-            Size = new Size(380, 18),
-            TextAlign = ContentAlignment.MiddleRight,
-            AutoEllipsis = true,
-            Anchor = AnchorStyles.Right,
-            Margin = new Padding(0, 1, 0, 0),
-        };
-        modelStack.Controls.Add(_lblModelStatus, 0, 0);
-        modelStack.Controls.Add(_lblModelSub, 0, 1);
-
-        _btnSelfCheck = Theme.Ghost("重新自检");
-        _btnSelfCheck.Name = "btnSelfCheck";
-        _btnSelfCheck.Anchor = AnchorStyles.Right;
-        _btnSelfCheck.Margin = new Padding(0, 5, 0, 0);
-
-        header.Controls.Add(titleStack, 0, 0);
-        header.Controls.Add(modelStack, 1, 0);
-        header.Controls.Add(_btnSelfCheck, 2, 0);
-        return header;
+        var panel = (Control)sender;
+        using var pen = new Pen(Theme.Border);
+        e.Graphics.DrawLine(pen, 0, panel.Height - 1, panel.Width, panel.Height - 1);
     }
 
-    private TabControl BuildTabs()
+    /// <summary>设计器里的卡片（_card*）共用这个描边。</summary>
+    private void pnlCard_Paint(object sender, PaintEventArgs e)
     {
-        var tabs = new TabControl
-        {
-            Dock = DockStyle.Fill,
-            Name = "tabMain",
-            Font = Theme.Body,
-            Padding = new Point(14, 6),
-        };
-        _pageRec = new TabPage("识别测试")
-        {
-            Name = "tabRecognize",
-            BackColor = Theme.Bg,
-            Padding = new Padding(12, 10, 12, 10),
-        };
-        _pageLearn = new TabPage("学习训练")
-        {
-            Name = "tabLearn",
-            BackColor = Theme.Bg,
-            Padding = new Padding(12, 10, 12, 10),
-        };
-        _pageTools = new TabPage("工具 · 我的模型")
-        {
-            Name = "tabTools",
-            BackColor = Theme.Bg,
-            Padding = new Padding(12, 10, 12, 10),
-        };
-        _pageFixture = new TabPage("针床检测")
-        {
-            Name = "tabFixture",
-            BackColor = Theme.Bg,
-            Padding = new Padding(12, 10, 12, 10),
-        };
-        _pageAnchor = BuildAnchorPage();
-        _pageMultiCam = new TabPage("多相机 · 资源")
-        {
-            Name = "tabMultiCam",
-            BackColor = Theme.Bg,
-            Padding = new Padding(12, 10, 12, 10),
-        };
-        _pageMultiCam.Controls.Add(BuildMultiCamPage());
-        _pageRec.Controls.Add(BuildCapturePage());
-        _pageLearn.Controls.Add(BuildLearnPage());
-        _pageTools.Controls.Add(BuildToolsPage());
-        _pageFixture.Controls.Add(BuildFixturePage());
-        tabs.TabPages.Add(_pageRec);
-        tabs.TabPages.Add(_pageLearn);
-        tabs.TabPages.Add(_pageTools);
-        tabs.TabPages.Add(_pageFixture);
-        tabs.TabPages.Add(_pageAnchor);
-        tabs.TabPages.Add(_pageMultiCam);
-        return tabs;
+        var panel = (Control)sender;
+        using var pen = new Pen(Theme.Border);
+        e.Graphics.DrawRectangle(pen, 0, 0, panel.Width - 1, panel.Height - 1);
     }
 
-    private Control BuildRecognizePage()
+    private void pnlAdv_Paint(object sender, PaintEventArgs e)
     {
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3,
-            BackColor = Theme.Bg,
-        };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        root.Controls.Add(BuildRecognizeToolbar(), 0, 0);
-
-        _pnlAdv = BuildAdvancedPanel();
-        _pnlAdv.Visible = _advExpanded;
-        root.Controls.Add(_pnlAdv, 0, 1);
-        root.Controls.Add(BuildRecognizeBody(), 0, 2);
-        return root;
+        var panel = (Control)sender;
+        using var pen = new Pen(Theme.Border);
+        e.Graphics.DrawRectangle(pen, 0, 0, panel.Width - 1, panel.Height - 1);
     }
 
-    private Control BuildRecognizeToolbar()
+    private void pnlStatus_Paint(object sender, PaintEventArgs e)
     {
-        var bar = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            ColumnCount = 6,
-            RowCount = 1,
-            Margin = new Padding(0, 0, 0, 8),
-        };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        for (int i = 0; i < 4; i++) bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        bar.Controls.Add(new Label
-        {
-            Text = "图片",
-            Font = Theme.BodyBold,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 0, 8, 0),
-        }, 0, 0);
-
-        _tbRecImage = new TextBox
-        {
-            Name = "tbRecImage",
-            Dock = DockStyle.Fill,
-            ReadOnly = true,
-            Font = Theme.Body,
-            BackColor = Color.White,
-            Margin = new Padding(0, 6, 8, 6),
-        };
-        bar.Controls.Add(_tbRecImage, 1, 0);
-
-        _btnSelectImage = Theme.Ghost("选择图片…");
-        _btnSelectImage.Name = "btnSelectImage";
-        Stretch(_btnSelectImage, 96, 34);
-        _btnSelectImage.Anchor = AnchorStyles.Left;
-        _btnSelectImage.Margin = new Padding(0, 4, 8, 4);
-        bar.Controls.Add(_btnSelectImage, 2, 0);
-
-        _btnRun = Theme.Primary("开始识别");
-        _btnRun.Name = "btnRun";
-        _btnRun.AutoSize = false;
-        _btnRun.Size = new Size(126, 36);
-        _btnRun.MinimumSize = new Size(126, 36);
-        _btnRun.Anchor = AnchorStyles.Left;
-        _btnRun.Margin = new Padding(0, 3, 8, 4);
-        bar.Controls.Add(_btnRun, 3, 0);
-
-        _btnClear = Theme.Ghost("清空");
-        _btnClear.Name = "btnClear";
-        Stretch(_btnClear, 62, 34);
-        _btnClear.Anchor = AnchorStyles.Left;
-        _btnClear.Margin = new Padding(0, 4, 8, 4);
-        bar.Controls.Add(_btnClear, 4, 0);
-
-        _btnToggleAdv = Theme.Ghost("▸ 详细设置");
-        _btnToggleAdv.Name = "btnToggleAdv";
-        _btnToggleAdv.Text = _advExpanded ? "▾ 收起设置" : "▸ 详细设置";
-        Stretch(_btnToggleAdv, 112, 34);
-        _btnToggleAdv.Anchor = AnchorStyles.Left;
-        _btnToggleAdv.Margin = new Padding(0, 4, 0, 4);
-        bar.Controls.Add(_btnToggleAdv, 5, 0);
-        return bar;
-    }
-
-    private Panel BuildAdvancedPanel()
-    {
-        var card = Theme.CardPanel();
-        card.Name = "pnlAdv";
-        card.Margin = new Padding(0, 0, 0, 8);
-
-        var g = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 4,
-            RowCount = 6,
-            BackColor = Color.White,
-            Margin = Padding.Empty,
-        };
-        g.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82f));
-        g.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
-        g.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104f));
-        g.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
-        for (int i = 0; i < 6; i++) g.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        // 模型文件
-        g.Controls.Add(FieldLabel("模型文件"), 0, 0);
-        var pick = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 1,
-            Margin = new Padding(0, 3, 0, 3),
-        };
-        pick.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        pick.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        _tbAdvModel = new TextBox
-        {
-            Dock = DockStyle.Fill,
-            Font = Theme.Body,
-            Margin = new Padding(0, 2, 6, 2),
-        };
-        _btnAdvModel = Theme.Ghost("选择…");
-        Stretch(_btnAdvModel, 84, 30);
-        _btnAdvModel.Margin = Padding.Empty;
-        pick.Controls.Add(_tbAdvModel, 0, 0);
-        pick.Controls.Add(_btnAdvModel, 1, 0);
-        g.Controls.Add(pick, 1, 0);
-        g.SetColumnSpan(pick, 3);
-
-        // 模型类型 / 设备
-        g.Controls.Add(FieldLabel("模型类型"), 0, 1);
-        _cboKind = MakeCombo();
-        _cboKind.Items.AddRange(new object[] { "YOLOv8 检测（推荐）", "YOLOv11 检测", "YOLOv8 分割" });
-        _cboKind.SelectedIndex = 0;
-        g.Controls.Add(_cboKind, 1, 1);
-        g.Controls.Add(FieldLabel("推理设备"), 2, 1);
-        _cboDevice = MakeCombo();
-        _cboDevice.Items.AddRange(new object[] { "CPU", "GPU 0" });
-        _cboDevice.SelectedIndex = 0;
-        g.Controls.Add(_cboDevice, 3, 1);
-
-        // 加速后端 / 阈值
-        g.Controls.Add(FieldLabel("加速后端"), 0, 2);
-        _cboProvider = MakeCombo();
-        _cboProvider.Items.AddRange(new object[] { "CPU（本机已验证）", "DirectML（GPU）" });
-        _cboProvider.SelectedIndex = 0;
-        g.Controls.Add(_cboProvider, 1, 2);
-        g.Controls.Add(FieldLabel("置信度 / NMS"), 2, 2);
-        var thr = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = false,
-            Height = 30,
-            WrapContents = false,
-            Margin = new Padding(0, 2, 0, 2),
-        };
-        _numConf = MakeNum(0.5m);
-        _numNms = MakeNum(0.5m);
-        thr.Controls.Add(_numConf);
-        thr.Controls.Add(new Label
-        {
-            Text = "NMS",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = true,
-            Margin = new Padding(8, 8, 6, 0),
-        });
-        thr.Controls.Add(_numNms);
-        g.Controls.Add(thr, 3, 2);
-
-        _lblAdvInfo = new Label
-        {
-            Text = "当前：未加载模型",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = true,
-            Margin = new Padding(0, 6, 0, 0),
-        };
-        g.Controls.Add(_lblAdvInfo, 0, 3);
-        g.SetColumnSpan(_lblAdvInfo, 4);
-
-        // 说明 + 按钮
-        var footer = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 1,
-            Margin = new Padding(0, 6, 0, 0),
-        };
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        footer.Controls.Add(new Label
-        {
-            Text = "改动会先验证：通过后才保存并切换，失败则保留当前模型。",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = false,
-            Dock = DockStyle.Fill,
-            Height = 36,
-            TextAlign = ContentAlignment.MiddleLeft,
-        }, 0, 0);
-        var footerButtons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            WrapContents = false,
-            FlowDirection = FlowDirection.RightToLeft,
-            Margin = Padding.Empty,
-        };
-        _btnVerifySave = Theme.Primary("验证并保存");
-        Stretch(_btnVerifySave, 116, 36);
-        _btnVerifySave.Margin = new Padding(8, 0, 0, 0);
-        _btnResetAdv = Theme.Ghost("恢复默认");
-        Stretch(_btnResetAdv, 94, 36);
-        footerButtons.Controls.Add(_btnVerifySave);
-        footerButtons.Controls.Add(_btnResetAdv);
-        footer.Controls.Add(footerButtons, 1, 0);
-        g.Controls.Add(footer, 0, 4);
-        g.SetColumnSpan(footer, 4);
-
-        _lblAdvProbe = new Label
-        {
-            Text = "",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = true,
-            Margin = new Padding(0, 4, 0, 0),
-        };
-        g.Controls.Add(_lblAdvProbe, 0, 5);
-        g.SetColumnSpan(_lblAdvProbe, 4);
-
-        card.Controls.Add(g);
-        return card;
-    }
-
-    private Control BuildRecognizeBody()
-    {
-        var body = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 1,
-            BackColor = Theme.Bg,
-        };
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        body.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        _splitRec = new SplitContainer
-        {
-            Dock = DockStyle.Fill,
-            Orientation = Orientation.Vertical,
-            SplitterWidth = 8,
-            // 先给一个足够大的初始宽度：WinForms 在构造时若 Panel2MinSize 超过当前 Width，
-            // set_Panel2MinSize 会立刻重算 SplitterDistance 并抛 InvalidOperationException。
-            Size = new Size(1000, 600),
-            Panel1MinSize = 300,
-            Panel2MinSize = 340,
-            FixedPanel = FixedPanel.Panel2,
-            BackColor = Theme.Border,
-            Margin = Padding.Empty,
-        };
-
-        var left = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(8) };
-        _picRec = new ImageCanvas
-        {
-            Name = "picRec",
-            Dock = DockStyle.Fill,
-            Editable = false,
-            EmptyText = "① 选择图片  →  ② 点“开始识别”",
-        };
-        left.Controls.Add(_picRec);
-        _splitRec.Panel1.Controls.Add(left);
-        _splitRec.Panel2.Controls.Add(BuildResultPanel());
-        body.Controls.Add(_splitRec, 0, 0);
-        return body;
-    }
-
-    private Control BuildResultPanel()
-    {
-        var card = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Color.White,
-            Padding = new Padding(12, 10, 10, 10),
-        };
-        var t = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 4,
-            BackColor = Color.White,
-        };
-        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        t.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        t.Controls.Add(new Label
-        {
-            Text = "识别结果",
-            Font = Theme.Section,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 2),
-        }, 0, 0);
-
-        _lblResultStats = new Label
-        {
-            Name = "lblResultStats",
-            Text = "尚未识别。",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        t.Controls.Add(_lblResultStats, 0, 1);
-
-        _grid = new DataGridView
-        {
-            Name = "grid",
-            Dock = DockStyle.Fill,
-            Margin = Padding.Empty,
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeRows = false,
-            ReadOnly = true,
-            RowHeadersVisible = false,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            MultiSelect = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-        };
-        Theme.StyleGrid(_grid);
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colName",
-            HeaderText = "目标名称",
-            FillWeight = 26,
-            MinimumWidth = 88,
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colConf",
-            HeaderText = "匹配度",
-            FillWeight = 14,
-            MinimumWidth = 68,
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colPos",
-            HeaderText = "相对位置",
-            FillWeight = 38,
-            MinimumWidth = 118,
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colCenter",
-            HeaderText = "中心坐标",
-            FillWeight = 22,
-            MinimumWidth = 96,
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-        });
-        t.Controls.Add(_grid, 0, 2);
-
-        t.Controls.Add(new Label
-        {
-            Text = "点表格行可在图上高亮；位置为框中心相对原图的百分比。",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = false,
-            Dock = DockStyle.Fill,
-            Height = 30,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(0, 4, 0, 0),
-        }, 0, 3);
-
-        card.Controls.Add(t);
-        return card;
-    }
-
-    private Control BuildLearnPage()
-    {
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3,
-            BackColor = Theme.Bg,
-        };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        // 训练区高度固定，保证参数、按钮和日志在任何窗口高度下都完整可见。
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 216f));
-        root.Controls.Add(BuildLearnToolbar(), 0, 0);
-
-        _splitLearn = new SplitContainer
-        {
-            Dock = DockStyle.Fill,
-            Orientation = Orientation.Vertical,
-            SplitterWidth = 8,
-            Size = new Size(1000, 600),
-            Panel1MinSize = 300,
-            Panel2MinSize = 380,
-            FixedPanel = FixedPanel.Panel2,
-            BackColor = Theme.Border,
-            Margin = Padding.Empty,
-        };
-        var left = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(8) };
-        _picLearn = new ImageCanvas
-        {
-            Name = "picLearn",
-            Dock = DockStyle.Fill,
-            Editable = true,
-            EmptyText = "① 打开图片\r\n② 在图上拖动框选目标",
-        };
-        _picLearn.BoxLabel = b => string.IsNullOrEmpty(b.Cn) ? b.En : b.Cn;
-        left.Controls.Add(_picLearn);
-        _splitLearn.Panel1.Controls.Add(left);
-        _splitLearn.Panel2.Controls.Add(BuildLearnSidebar());
-        root.Controls.Add(_splitLearn, 0, 1);
-        root.Controls.Add(BuildTrainingCard(), 0, 2);
-        return root;
-    }
-
-    private Control BuildLearnToolbar()
-    {
-        var bar = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            ColumnCount = 5,
-            RowCount = 2,
-            Margin = new Padding(0, 0, 0, 8),
-        };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        bar.Controls.Add(new Label
-        {
-            Text = "图片",
-            Font = Theme.BodyBold,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 0, 8, 0),
-        }, 0, 0);
-
-        _tbLearnImage = new TextBox
-        {
-            Name = "tbLearnImage",
-            Dock = DockStyle.Fill,
-            ReadOnly = true,
-            Font = Theme.Body,
-            BackColor = Color.White,
-            Margin = new Padding(0, 6, 8, 6),
-        };
-        bar.Controls.Add(_tbLearnImage, 1, 0);
-
-        _btnOpenLearn = Theme.Ghost("打开图片…");
-        _btnOpenLearn.Name = "btnOpenLearnImage";
-        Stretch(_btnOpenLearn, 96, 34);
-        _btnOpenLearn.Anchor = AnchorStyles.Left;
-        _btnOpenLearn.Margin = new Padding(0, 4, 8, 4);
-        bar.Controls.Add(_btnOpenLearn, 2, 0);
-
-        _btnOpenFolder = Theme.Ghost("打开文件夹…");
-        _btnOpenFolder.Name = "btnOpenLearnFolder";
-        Stretch(_btnOpenFolder, 116, 34);
-        _btnOpenFolder.Anchor = AnchorStyles.Left;
-        _btnOpenFolder.Margin = new Padding(0, 4, 8, 4);
-        bar.Controls.Add(_btnOpenFolder, 3, 0);
-
-        _btnClearLearn = Theme.Ghost("清空");
-        _btnClearLearn.Name = "btnClearLearn";
-        Stretch(_btnClearLearn, 62, 34);
-        _btnClearLearn.Anchor = AnchorStyles.Left;
-        _btnClearLearn.Margin = new Padding(0, 4, 0, 4);
-        bar.Controls.Add(_btnClearLearn, 4, 0);
-
-        var hint = Theme.Hint("① 打开图片  →  ② 拖动框选  →  ③ 拖边角调大小、框内拖动平移、拖圆点旋转（Shift 吸附 15°）→  ④ 回车 / 右键确认并命名；重新框选或 Esc 取消。已保存的框：单击选中后同样能拖手柄改大小/旋转，或点框内拖动。标注立即导出到 mydataset。");
-        bar.Controls.Add(hint, 0, 1);
-        bar.SetColumnSpan(hint, 5);
-        return bar;
-    }
-
-    private Control BuildLearnSidebar()
-    {
-        var scroll = new Panel
-        {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            BackColor = Theme.Bg,
-            Padding = new Padding(8, 0, 0, 0),
-        };
-        var stack = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 1,
-            RowCount = 0,
-            BackColor = Theme.Bg,
-            Margin = Padding.Empty,
-        };
-        stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-
-        // 图片列表（批量标注）
-        var (c0, b0) = MakeCard("图片列表");
-        _lvImages = new ListView
-        {
-            Name = "lvImages",
-            Dock = DockStyle.Top,
-            Height = 168,
-            View = View.Details,
-            FullRowSelect = true,
-            MultiSelect = false,
-            HideSelection = false,
-            HeaderStyle = ColumnHeaderStyle.Nonclickable,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = Theme.Body,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        _lvImages.Columns.Add("图片", 186);
-        _lvImages.Columns.Add("标注", 54, HorizontalAlignment.Right);
-        _lvImages.Columns.Add("状态", 76);
-        AddRow(b0, _lvImages);
-
-        var flowImg = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            Margin = new Padding(0, 0, 0, 4),
-        };
-        _btnPrevImage = Theme.Ghost("上一张");
-        _btnPrevImage.Name = "btnPrevImage";
-        Stretch(_btnPrevImage, 74, 32);
-        _btnNextImage = Theme.Ghost("下一张");
-        _btnNextImage.Name = "btnNextImage";
-        Stretch(_btnNextImage, 74, 32);
-        flowImg.Controls.Add(_btnPrevImage);
-        flowImg.Controls.Add(_btnNextImage);
-        AddRow(b0, flowImg);
-
-        // 半自动标注：先让模型猜一遍，再逐张复核。自动框确认前不进训练集。
-        var flowAuto = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            Margin = new Padding(0, 0, 0, 4),
-        };
-        _btnAutoLabel = Theme.Success("⚡ 自动预标注");
-        _btnAutoLabel.Name = "btnAutoLabel";
-        Stretch(_btnAutoLabel, 116, 32);
-        _btnReview = Theme.Ghost("复核");
-        _btnReview.Name = "btnReview";
-        Stretch(_btnReview, 58, 32);
-        _btnClearAuto = Theme.Ghost("清空自动框");
-        _btnClearAuto.Name = "btnClearAuto";
-        Stretch(_btnClearAuto, 92, 32);
-        flowAuto.Controls.Add(_btnAutoLabel);
-        flowAuto.Controls.Add(_btnReview);
-        flowAuto.Controls.Add(_btnClearAuto);
-        AddRow(b0, flowAuto);
-
-        _lblImageListInfo = Theme.Hint("点“打开文件夹”一次载入整个文件夹；选中列表即可切换图片。");
-        AddRow(b0, _lblImageListInfo);
-
-        _lblReviewHint = Theme.Hint("复核中：Enter 确认并下一张 · D 丢弃本图自动框 · Delete 删选中框 · Esc 退出");
-        _lblReviewHint.Name = "lblReviewHint";
-        _lblReviewHint.Visible = false;
-        AddRow(b0, _lblReviewHint);
-        AddRow(stack, c0);
-
-        // 本图标注
-        var (c1, b1) = MakeCard("本图标注");
-        _lvBoxes = new ListView
-        {
-            Name = "lvBoxes",
-            Dock = DockStyle.Top,
-            Height = 120,
-            View = View.Details,
-            FullRowSelect = true,
-            MultiSelect = false,
-            HideSelection = false,
-            HeaderStyle = ColumnHeaderStyle.Nonclickable,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = Theme.Body,
-            Margin = new Padding(0, 0, 0, 8),
-        };
-        _lvBoxes.Columns.Add("目标", 92);
-        _lvBoxes.Columns.Add("存储名", 78);
-        _lvBoxes.Columns.Add("框(x,y,w,h)", 152);
-        AddRow(b1, _lvBoxes);
-
-        var flow1 = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        _btnDelBox = Theme.Ghost("删除");
-        Stretch(_btnDelBox, 68, 32);
-        _btnRenameBox = Theme.Ghost("改名");
-        Stretch(_btnRenameBox, 68, 32);
-        _btnReexport = Theme.Ghost("重新导出");
-        Stretch(_btnReexport, 92, 32);
-        flow1.Controls.Add(_btnDelBox);
-        flow1.Controls.Add(_btnRenameBox);
-        flow1.Controls.Add(_btnReexport);
-        AddRow(b1, flow1);
-
-        _lblAnnoInfo = Theme.Hint("本图还没有标注：在左侧图片上拖动鼠标框选目标。");
-        AddRow(b1, _lblAnnoInfo);
-        AddRow(stack, c1);
-
-        // 数据集
-        var (c2, b2) = MakeCard("数据集");
-        _lblDatasetStats = new Label
-        {
-            Text = "0 张图片 · 0 个框 · 0 类",
-            Font = Theme.Body,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        AddRow(b2, _lblDatasetStats);
-        _lnkOpenDataset = Theme.Link("打开数据集文件夹");
-        _lnkOpenDataset.Name = "lnkOpenDataset";
-        _lnkOpenDataset.Margin = new Padding(0, 0, 0, 2);
-        AddRow(b2, _lnkOpenDataset);
-        AddRow(stack, c2);
-
-        scroll.Controls.Add(stack);
-        return scroll;
+        using var pen = new Pen(Theme.Border);
+        e.Graphics.DrawLine(pen, 0, 0, ((Control)sender).Width, 0);
     }
 
     /// <summary>
-    /// 训练区固定在页面底部、横跨整页：参数、按钮、日志始终可见，
-    /// 不再因为右侧卡片超高而被滚出屏幕（这正是旧版“按钮看不见”的同类问题）。
+    /// 学习训练页的静态布局在 MainForm.Designer.cs 里（设计器可见），
+    /// 这里只做需要运行期数据的初始化。
     /// </summary>
-    private Control BuildTrainingCard()
+    private void InitializeLearnPage()
     {
-        var (card, body) = MakeCard("训练模型");
-        card.Name = "cardTrain";
-        card.AutoSize = false;
-        card.Dock = DockStyle.Fill;
-        card.Margin = new Padding(0, 8, 0, 0);
-
-        var grid = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 1,
-            Margin = Padding.Empty,
-        };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55f));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45f));
-
-        var left = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 4,
-            RowCount = 3,
-            Margin = new Padding(0, 0, 12, 0),
-        };
-        left.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26f));
-        left.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 74f));
-
-        left.Controls.Add(FieldLabel("轮数"), 0, 0);
-        _numEpochs = new NumericUpDown
-        {
-            Minimum = 5,
-            Maximum = 300,
-            Increment = 5,
-            Value = Math.Clamp(_settings.TrainEpochs, 5, 300),
-            Dock = DockStyle.Fill,
-            Font = Theme.Body,
-            Margin = new Padding(0, 2, 12, 2),
-        };
-        left.Controls.Add(_numEpochs, 1, 0);
-        left.Controls.Add(FieldLabel("尺寸"), 2, 0);
-        _cboImgSize = MakeCombo();
-        _cboImgSize.Margin = new Padding(0, 2, 0, 2);
-        _cboImgSize.Items.AddRange(new object[] { "320", "416", "512", "640" });
-        _cboImgSize.SelectedIndex = 3;
-        left.Controls.Add(_cboImgSize, 3, 0);
-
-        left.Controls.Add(FieldLabel("批大小"), 0, 1);
-        _numBatch = new NumericUpDown
-        {
-            Minimum = 1,
-            Maximum = 16,
-            Value = Math.Clamp(_settings.TrainBatch, 1, 16),
-            Dock = DockStyle.Fill,
-            Font = Theme.Body,
-            Margin = new Padding(0, 2, 12, 2),
-        };
-        left.Controls.Add(_numBatch, 1, 1);
-
-        var flow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            Margin = new Padding(0, 4, 0, 2),
-        };
-        _btnInitEnv = Theme.Ghost("初始化环境");
-        _btnInitEnv.Name = "btnInitEnv";
-        Stretch(_btnInitEnv, 108, 34);
-        _btnTrain = Theme.Success("开始训练");
-        _btnTrain.Name = "btnTrain";
-        Stretch(_btnTrain, 96, 34);
-        _btnCancelTrain = Theme.Ghost("取消");
-        _btnCancelTrain.Name = "btnCancelTrain";
-        Stretch(_btnCancelTrain, 62, 34);
-        _btnCancelTrain.Enabled = false;
-        flow.Controls.Add(_btnInitEnv);
-        flow.Controls.Add(_btnTrain);
-        flow.Controls.Add(_btnCancelTrain);
-        left.Controls.Add(flow, 0, 2);
-        left.SetColumnSpan(flow, 4);
-
-        var right = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            ColumnCount = 1,
-            RowCount = 3,
-            Margin = Padding.Empty,
-        };
-        right.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        right.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        right.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-
-        _lblTrainStage = Theme.Hint("≥3 个标注框即可训练；CPU 50 轮约 5~15 分钟。");
-        right.Controls.Add(_lblTrainStage, 0, 0);
-
-        _pbTrain = new ProgressBar
-        {
-            Dock = DockStyle.Top,
-            Height = 8,
-            Style = ProgressBarStyle.Blocks,
-            Margin = new Padding(0, 2, 0, 6),
-        };
-        right.Controls.Add(_pbTrain, 0, 1);
-
-        _txtTrainLog = new TextBox
-        {
-            Name = "txtTrainLog",
-            Dock = DockStyle.Fill,
-            Height = 118,
-            MinimumSize = new Size(0, 96),
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            WordWrap = false,
-            BorderStyle = BorderStyle.FixedSingle,
-            Margin = new Padding(0, 2, 0, 0),
-        };
+        _picLearn.BoxLabel = b => string.IsNullOrEmpty(b.Cn) ? b.En : b.Cn;
+        _numEpochs.Value = Math.Clamp(_settings.TrainEpochs, 5, 300);
+        _numBatch.Value = Math.Clamp(_settings.TrainBatch, 1, 16);
         Theme.StyleLog(_txtTrainLog);
-        _txtTrainLog.Text = "训练日志会显示在这里。";
-        right.Controls.Add(_txtTrainLog, 0, 2);
-
-        grid.Controls.Add(left, 0, 0);
-        grid.Controls.Add(right, 1, 0);
-        body.Controls.Add(grid);
-        return card;
-    }
-
-    private Control BuildStatusBar()
-    {
-        var bar = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
-            BackColor = Color.White,
-            Padding = new Padding(14, 0, 14, 0),
-            Margin = Padding.Empty,
-        };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bar.Paint += (_, e) =>
-        {
-            using var pen = new Pen(Theme.Border);
-            e.Graphics.DrawLine(pen, 0, 0, bar.Width, 0);
-        };
-        _lblStatus = new Label
-        {
-            Text = "正在启动…",
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoEllipsis = true,
-            Margin = Padding.Empty,
-        };
-        _lblStatusRight = new Label
-        {
-            Text = "数据集：0 张图 · 0 个框",
-            AutoSize = true,
-            TextAlign = ContentAlignment.MiddleRight,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Anchor = AnchorStyles.Right,
-            Margin = Padding.Empty,
-        };
-        bar.Controls.Add(_lblStatus, 0, 0);
-        bar.Controls.Add(_lblStatusRight, 1, 0);
-        return bar;
     }
 
     // ---------------------------------------------------------------- helpers
@@ -1442,7 +458,7 @@ public sealed partial class MainForm : Form
             return;
         }
         _lblAdvProbe.Text = "正在探测本机推理后端…";
-        var kind = (YoloModelKind)Math.Max(0, Math.Min(2, _cboKind.SelectedIndex));
+        var kind = (YoloModelKind)Math.Max(0, Math.Min(3, _cboKind.SelectedIndex));
         try
         {
             var list = await Task.Run(() => SelfCheck.ProbeProviders(path, kind));
@@ -1561,7 +577,7 @@ public sealed partial class MainForm : Form
 
     private ModelOptions OptionsFromAdvanced()
     {
-        var kind = (YoloModelKind)Math.Max(0, Math.Min(2, _cboKind.SelectedIndex));
+        var kind = (YoloModelKind)Math.Max(0, Math.Min(3, _cboKind.SelectedIndex));
         var device = _cboDevice.SelectedIndex == 1 ? DeviceType.GPU0 : DeviceType.CPU;
         var provider = _cboProvider.SelectedIndex == 1 ? OnnxRuntimeDeviceType.DML : OnnxRuntimeDeviceType.Default;
         return new ModelOptions(
@@ -2333,10 +1349,13 @@ public sealed partial class MainForm : Form
                 return;
             }
 
+            // 训练导出的可能是 YOLO26 端到端模型（输出 [1,300,6]），按实际 ONNX 判型；
+            // 写死 v8 会把它记进 settings.json 且下拉框显示错（运行时虽会被纠正，但保存值是错的）。
+            var trainedKind = OnnxInspector.DetectKind(outcome.OnnxPath) ?? YoloModelKind.YOLOv8Det;
             var opt = _settings.ToModelOptions() with
             {
                 ModelPath = outcome.OnnxPath,
-                Kind = YoloModelKind.YOLOv8Det,
+                Kind = trainedKind,
                 Device = DeviceType.CPU,
                 Provider = OnnxRuntimeDeviceType.Default,
             };

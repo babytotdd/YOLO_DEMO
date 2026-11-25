@@ -2,7 +2,7 @@
 
 面向产线 / 质检场景的 Windows 桌面视觉识别工具：**选模型 → 看图 → 框选命名 → 自动导出 YOLO 标签 → 训练 / 导出 / 切换模型**，全程不需要理解 YOLO 的目录结构。
 
-- 主程序：`YoloFool`（WinForms / .NET 8 / C#，代码优先构建，非 Designer）
+- 主程序：`YoloFool`（WinForms / .NET 8 / C#；静态控件树在 `UI/MainForm.Designer.cs`，运行期只做样式、事件与数据填充）
 - 推理引擎：DeploySharp + ONNX Runtime（CPU / Default，可探测 DirectML）
 - 图像处理：OpenCvSharp4；中文拼音预览：ToolGood.Words
 - 本机实测：`yolov8n.onnx`（COCO 80 类）CPU 预热后 **44–49 ms/张**
@@ -33,8 +33,7 @@ YOLO_DEMO/
 ├── assets/                 # 示例图（bus.jpg / result.jpg）
 ├── my_models/   (忽略)     # 运行期：mymodel.onnx、model_info.json、备份
 ├── mydataset/   (忽略)     # 运行期：images/labels/classes.txt/annotations.json/data.yaml
-├── samples/     (忽略)     # 本机样例：camera / needle-bed / video
-└── 启动演示.bat            # 有 Release 产物则直接启动，否则 dotnet run
+└── samples/     (忽略)     # 本机样例：camera / needle-bed / video
 ```
 
 > 仓库只包含**源码与文档**。`bin/`、`obj/`、`.vs/`、Python venv、模型权重（`*.onnx`/`*.pt`）、数据集与采集样本均被 [.gitignore](.gitignore) 排除；`DeploySharp/`、`DeploySharpV1/` 是上游 [guojin-yan/DeploySharp](https://github.com/guojin-yan/DeploySharp) 的本地克隆，也不入库。
@@ -47,7 +46,7 @@ YOLO_DEMO/
 # 构建
 dotnet build YoloFool/YoloFool.csproj -c Release
 
-# 运行（或直接双击 启动演示.bat）
+# 运行
 dotnet run --project YoloFool
 ```
 
@@ -77,7 +76,7 @@ mydataset/
 
 - 本机仅 CPU 可用：DirectML 探测报 `887A0004`，程序只把它作为探测结果展示，不选为默认。
 - 构建时有 2 个 `NU1701` 警告，来自 DeploySharp 传递依赖的 `iTextSharp 5.5.13.5`，可忽略。
-- 界面按 DPI 自适应布局，非 Designer 坐标；如需改界面请优先改 `YoloFool/UI/MainForm*.cs`。
+- 界面用 `TableLayoutPanel`/`Dock` 做 DPI 自适应布局：静态控件树在 `YoloFool/UI/MainForm.Designer.cs`，样式/事件/数据在 `YoloFool/UI/MainForm.*.cs` 各页 partial。
 
 ## 第三方
 

@@ -20,10 +20,6 @@ public sealed partial class MainForm
 
     private CaptureSource _capSource = CaptureSource.None;
 
-    private Button _btnSnapshot;
-    private Button _btnRecord;
-    private TableLayoutPanel _pnlMetrics;
-    private bool _syncingCapGrid;
 
     private bool _snapshotBusy;
     private OpenCvSharp.VideoWriter _recordWriter;
@@ -32,355 +28,41 @@ public sealed partial class MainForm
 
     // ---------------------------------------------------------------- layout
 
-    private Control BuildCapturePage()
+    /// <summary>
+    /// 识别测试页：工具栏、视频选项、详细设置三块已经在 MainForm.Designer.cs 里建好，
+    /// 这里只做运行期绑定（别名、展开状态）；画布 + 结果表下一步再搬进设计器。
+    /// </summary>
+    private void InitializeCapturePage()
     {
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 4,
-            BackColor = Theme.Bg,
-            Padding = new Padding(2, 2, 2, 2),
-        };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-
-        root.Controls.Add(BuildCaptureToolbar(), 0, 0);
-        root.Controls.Add(BuildVideoOptions(), 0, 1);
-
-        _pnlAdv = BuildAdvancedPanel();
-        _pnlAdv.Visible = _advExpanded;
-        root.Controls.Add(_pnlAdv, 0, 2);
-
-        root.Controls.Add(BuildCaptureBody(), 0, 3);
-        return root;
-    }
-
-    private Control BuildCaptureToolbar()
-    {
-        var bar = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 11,
-            RowCount = 1,
-            Margin = new Padding(0, 0, 0, 4),
-            BackColor = Theme.Bg,
-        };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        for (int i = 0; i < 9; i++) bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        bar.Controls.Add(FieldLabel("来源"), 0, 0);
-
-        _tbRecImage = new TextBox
-        {
-            Name = "tbRecImage",
-            Dock = DockStyle.Fill,
-            ReadOnly = true,
-            Font = Theme.Body,
-            BackColor = Color.White,
-            PlaceholderText = "图片路径 / 摄像头 0 / 视频文件",
-            Margin = new Padding(0, 4, 8, 4),
-        };
-        _tbVideoPath = _tbRecImage;
-        bar.Controls.Add(_tbRecImage, 1, 0);
-
-        _btnSelectImage = Theme.Ghost("打开图片");
-        _btnSelectImage.Name = "btnSelectImage";
-        Stretch(_btnSelectImage, 92, 34);
-        _btnSelectImage.Anchor = AnchorStyles.Left;
-        _btnSelectImage.Margin = new Padding(0, 3, 4, 3);
-        bar.Controls.Add(_btnSelectImage, 2, 0);
-
-        _btnCamera = Theme.Ghost("摄像头");
-        _btnCamera.Name = "btnCamera";
-        Stretch(_btnCamera, 78, 34);
-        _btnCamera.Anchor = AnchorStyles.Left;
-        _btnCamera.Margin = new Padding(0, 3, 4, 3);
-        bar.Controls.Add(_btnCamera, 3, 0);
-
-        _btnPickVideo = Theme.Ghost("选择视频");
-        _btnPickVideo.Name = "btnPickVideo";
-        Stretch(_btnPickVideo, 92, 34);
-        _btnPickVideo.Anchor = AnchorStyles.Left;
-        _btnPickVideo.Margin = new Padding(0, 3, 4, 3);
-        bar.Controls.Add(_btnPickVideo, 4, 0);
-
-        _btnSnapshot = Theme.Ghost("拍照");
-        _btnSnapshot.Name = "btnSnapshot";
-        Stretch(_btnSnapshot, 68, 34);
-        _btnSnapshot.Anchor = AnchorStyles.Left;
-        _btnSnapshot.Margin = new Padding(0, 3, 4, 3);
-        bar.Controls.Add(_btnSnapshot, 5, 0);
-
-        _btnRecord = Theme.Ghost("● 录制");
-        _btnRecord.Name = "btnRecord";
-        Stretch(_btnRecord, 92, 34);
-        _btnRecord.Anchor = AnchorStyles.Left;
-        _btnRecord.Enabled = false;
-        _btnRecord.Margin = new Padding(0, 3, 4, 3);
-        bar.Controls.Add(_btnRecord, 6, 0);
-
-        _btnStartVideo = Theme.Primary("开始识别");
-        _btnStartVideo.Name = "btnStartVideo";
-        Stretch(_btnStartVideo, 104, 36);
-        _btnStartVideo.Anchor = AnchorStyles.Left;
-        _btnStartVideo.Margin = new Padding(0, 2, 4, 3);
-        bar.Controls.Add(_btnStartVideo, 7, 0);
         _btnRun = _btnStartVideo;
-
-        _btnStopVideo = Theme.Ghost("停止");
-        _btnStopVideo.Name = "btnStopVideo";
-        Stretch(_btnStopVideo, 68, 34);
-        _btnStopVideo.Anchor = AnchorStyles.Left;
-        _btnStopVideo.Enabled = false;
-        _btnStopVideo.Margin = new Padding(0, 2, 4, 3);
-        bar.Controls.Add(_btnStopVideo, 8, 0);
-
-        _btnClear = Theme.Ghost("清空");
-        _btnClear.Name = "btnClear";
-        Stretch(_btnClear, 62, 34);
-        _btnClear.Anchor = AnchorStyles.Left;
-        _btnClear.Margin = new Padding(0, 2, 4, 3);
-        bar.Controls.Add(_btnClear, 9, 0);
-
-        _btnToggleAdv = Theme.Ghost("▸ 详细设置");
-        _btnToggleAdv.Name = "btnToggleAdv";
+        _tbVideoPath = _tbRecImage;
         _btnToggleAdv.Text = _advExpanded ? "▾ 收起设置" : "▸ 详细设置";
-        Stretch(_btnToggleAdv, 112, 34);
-        _btnToggleAdv.Anchor = AnchorStyles.Left;
-        _btnToggleAdv.Margin = new Padding(0, 2, 0, 3);
-        bar.Controls.Add(_btnToggleAdv, 10, 0);
-        return bar;
+        _pnlAdv.Visible = _advExpanded;
+        InitializeCaptureBody();
     }
 
-    private Control BuildCaptureBody()
+    /// <summary>
+    /// 画布 + 结果侧栏已由 MainForm.Designer.cs 建好，这里只做运行期绑定：
+    /// 别名（视频页复用同一套控件）、右键菜单、链接按钮的点击。
+    /// </summary>
+    private void InitializeCaptureBody()
     {
-        var body = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 1,
-            BackColor = Theme.Bg,
-        };
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        body.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-
-        var split = new SplitContainer
-        {
-            Dock = DockStyle.Fill,
-            Orientation = Orientation.Vertical,
-            SplitterWidth = 8,
-            // 先给足初始宽度：Panel2MinSize 大于当前 Width 时 WinForms 会抛 InvalidOperationException
-            Size = new Size(1000, 600),
-            Panel1MinSize = 300,
-            Panel2MinSize = 340,
-            FixedPanel = FixedPanel.Panel2,
-            BackColor = Theme.Border,
-            Margin = Padding.Empty,
-        };
-        _splitRec = split;
-        _splitVideo = split;
-
-        var left = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(8) };
-        _picRec = new ImageCanvas
-        {
-            Name = "picRec",
-            Dock = DockStyle.Fill,
-            Editable = false,
-            EmptyText = "① 打开图片 / 摄像头 / 视频\r\n② 点“开始识别”",
-            TrackLabel = t => $"#{t.Id} {_labels.Display(t.Item.RawCategory, t.Item.ClassId)} {t.Item.Confidence:P0}",
-        };
         _picVideo = _picRec;
+        _splitVideo = _splitRec;
+        _gridVideo = _grid;
+        _lblVideoStats = _lblResultStats;
+
+        _picRec.TrackLabel = t => $"#{t.Id} {_labels.Display(t.Item.RawCategory, t.Item.ClassId)} {t.Item.Confidence:P0}";
         _picRec.CanvasMenu = BuildImageContextMenu();
         _picRec.SaveRequested += () => SaveCurrentImage(true);
-        left.Controls.Add(_picRec);
-        split.Panel1.Controls.Add(left);
-        split.Panel2.Controls.Add(BuildCaptureSidePanel());
 
-        body.Controls.Add(split, 0, 0);
-        return body;
-    }
-
-    private Control BuildCaptureSidePanel()
-    {
-        var panel = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Color.White,
-            Padding = new Padding(12, 10, 10, 10),
-        };
-        var t = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 5,
-            BackColor = Color.White,
-        };
-        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        t.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        var head = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = new Padding(0, 0, 0, 2),
-        };
-        head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        head.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        head.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        head.Controls.Add(new Label
-        {
-            Text = "识别结果",
-            Font = Theme.Section,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Margin = new Padding(0, 2, 0, 0),
-        }, 0, 0);
-
-        var headTools = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            WrapContents = false,
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0, 2, 0, 0),
-        };
-        _lblFilterState = new Label
-        {
-            Text = "筛除：关",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 6, 8, 0),
-        };
-        headTools.Controls.Add(_lblFilterState);
-
-        _btnFilter = Theme.Link("筛除…");
-        _btnFilter.Margin = new Padding(0, 2, 10, 0);
-        _btnFilter.Click += (_, _) => EditFilterOptions();
-        headTools.Controls.Add(_btnFilter);
-
-        _btnBlockClass = Theme.Link("屏蔽该类");
-        _btnBlockClass.Margin = new Padding(0, 2, 10, 0);
-        _btnBlockClass.Click += (_, _) => BlockSelectedClass();
-        headTools.Controls.Add(_btnBlockClass);
-
-        _btnDeleteResult = Theme.Link("删除");
-        _btnDeleteResult.Margin = new Padding(0, 2, 0, 0);
-        _btnDeleteResult.Click += (_, _) => RemoveSelectedResult();
-        headTools.Controls.Add(_btnDeleteResult);
-
-        head.Controls.Add(headTools, 0, 1);
-        t.Controls.Add(head, 0, 0);
-        RefreshFilterBadge();
-
-        var status = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        _lblResultStats = new Label
-        {
-            Name = "lblResultStats",
-            Text = "尚未识别。",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 2),
-        };
-        _lblVideoStats = _lblResultStats;
-        _lblVideoArea = new Label
-        {
-            Name = "lblVideoArea",
-            Text = "",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 4),
-        };
-        status.Controls.Add(_lblResultStats, 0, 0);
-        status.Controls.Add(_lblVideoArea, 0, 1);
-        t.Controls.Add(status, 0, 1);
-
-        _pnlMetrics = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 4,
-            RowCount = 1,
-            Margin = new Padding(0, 0, 0, 8),
-            Visible = false,
-        };
-        for (int i = 0; i < 4; i++) _pnlMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-        _pnlMetrics.Controls.Add(Metric("活跃 ID", out _lblVideoActive), 0, 0);
-        _pnlMetrics.Controls.Add(Metric("累计 ID", out _lblVideoTotal), 1, 0);
-        _pnlMetrics.Controls.Add(Metric("A→B", out _lblVideoAtoB), 2, 0);
-        _pnlMetrics.Controls.Add(Metric("B→A", out _lblVideoBtoA), 3, 0);
-        t.Controls.Add(_pnlMetrics, 0, 2);
-
-        _grid = new DataGridView
-        {
-            Name = "grid",
-            Dock = DockStyle.Fill,
-            Margin = Padding.Empty,
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeRows = false,
-            ReadOnly = true,
-            RowHeadersVisible = false,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            MultiSelect = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-        };
         Theme.StyleGrid(_grid);
-        AddCaptureColumn("colId", "ID", 8, 34);
-        AddCaptureColumn("colName", "目标", 24, 56);
-        AddCaptureColumn("colConf", "匹配度", 18, 52);
-        AddCaptureColumn("colPos", "位置", 30, 78);
-        AddCaptureColumn("colCenter", "中心", 20, 64);
-        AddCaptureColumn("colArea", "面积", 22, 56);
-        AddCaptureColumn("colPct", "占比", 16, 44);
-        _gridVideo = _grid;
-        t.Controls.Add(_grid, 0, 3);
-
-        t.Controls.Add(new Label
-        {
-            Text = "点表格行可在图上高亮；视频模式点目标可看轨迹 ID。",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = false,
-            Dock = DockStyle.Fill,
-            Height = 30,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(0, 4, 0, 0),
-        }, 0, 4);
-
-        panel.Controls.Add(t);
-        return panel;
+        _btnFilter.Click += (_, _) => EditFilterOptions();
+        _btnBlockClass.Click += (_, _) => BlockSelectedClass();
+        _btnDeleteResult.Click += (_, _) => RemoveSelectedResult();
+        RefreshFilterBadge();
     }
 
-    private void AddCaptureColumn(string name, string header, int weight, int minWidth) =>
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = name,
-            HeaderText = header,
-            FillWeight = weight,
-            MinimumWidth = minWidth,
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-        });
 
     // ---------------------------------------------------------------- mode
 

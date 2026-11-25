@@ -12,21 +12,8 @@ namespace YoloFool;
 /// <summary>“工具 · 我的模型”页里的三张新卡：模型库、针床定位V2 学习库、机种管理。</summary>
 public sealed partial class MainForm
 {
-    private ComboBox _cboToolsLibCategory;
-    private ListView _lvToolsLibModels;
-    private Label _lblToolsLibInfo;
-    private Label _lblToolsLibDir;
-    private Button _btnToolsLibUse;
-    private Button _btnToolsLibOpen;
 
-    private ComboBox _cboToolsAnchorModel;
-    private Label _lblToolsAnchorStats;
-    private Label _lblToolsAnchorModelInfo;
-    private Label _lblToolsAnchorCalibInfo;
 
-    private ComboBox _cboToolsMachineKind;
-    private ListView _lvToolsMachines;
-    private Label _lblToolsMachineInfo;
 
     private readonly List<ToolModelEntry> _toolsLibEntries = new();
     private readonly List<ToolMachineEntry> _toolsMachineEntries = new();
@@ -35,71 +22,6 @@ public sealed partial class MainForm
 
     // ---------------------------------------------------------------- 模型库
 
-    private Control BuildToolsLibraryCard()
-    {
-        var (card, body) = MakeCard("模型库（磁盘上现有的都在这）");
-        card.Name = "cardToolsLib";
-
-        _lblToolsLibInfo = new Label
-        {
-            Text = "选一个类别，看这一类的模型 / 学习库现在有哪些。选中的 onnx 可以直接切过去识别。",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        AddRow(body, _lblToolsLibInfo);
-
-        var pick = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 1,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        pick.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        pick.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        _cboToolsLibCategory = MakeCombo();
-        _cboToolsLibCategory.Margin = new Padding(0, 2, 8, 2);
-        _cboToolsLibCategory.SelectedIndexChanged += (_, _) =>
-        {
-            if (_toolsLibSyncing) return;
-            RefreshToolsLibraryModels();
-        };
-        pick.Controls.Add(_cboToolsLibCategory, 0, 0);
-
-        var btnOpen = Theme.Ghost("打开所在目录");
-        Stretch(btnOpen, 128, 32);
-        btnOpen.Margin = new Padding(0, 2, 0, 2);
-        btnOpen.Click += (_, _) => OpenToolsLibFolder();
-        pick.Controls.Add(btnOpen, 1, 0);
-        AddRow(body, pick);
-
-        _lvToolsLibModels = MakeToolsList(("名称", 230), ("大小", 84), ("修改时间", 116), ("说明", 420));
-        _lvToolsLibModels.SelectedIndexChanged += (_, _) => SyncToolsLibButtons();
-        _lvToolsLibModels.DoubleClick += (_, _) => UseToolsLibModel();
-        AddRow(body, _lvToolsLibModels);
-
-        var flow = ToolsFlow();
-        _btnToolsLibUse = ToolsButton("用这个 ONNX 识别", (_, _) => UseToolsLibModel(), true, 150);
-        _btnToolsLibOpen = ToolsButton("打开所在目录", (_, _) => OpenToolsLibFolder(), false, 128);
-        flow.Controls.Add(_btnToolsLibUse);
-        flow.Controls.Add(_btnToolsLibOpen);
-        AddRow(body, flow);
-
-        _lblToolsLibDir = new Label
-        {
-            Text = "",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 0, 0, 2),
-        };
-        AddRow(body, _lblToolsLibDir);
-        return card;
-    }
 
     private void RefreshToolsLibrary()
     {
@@ -201,72 +123,6 @@ public sealed partial class MainForm
 
     // ---------------------------------------------------------------- V2 学习库
 
-    private Control BuildToolsAnchorLibraryCard()
-    {
-        var (card, body) = MakeCard("针床定位V2 · 学习库管理");
-        card.Name = "cardToolsAnchorLib";
-
-        var pick = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 1,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        pick.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
-        pick.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-
-        _cboToolsAnchorModel = MakeCombo();
-        _cboToolsAnchorModel.Margin = new Padding(0, 2, 12, 2);
-        _cboToolsAnchorModel.SelectedIndexChanged += (_, _) =>
-        {
-            if (_toolsMachineSyncing) return;
-            RefreshToolsAnchorDetail();
-        };
-        pick.Controls.Add(_cboToolsAnchorModel, 0, 0);
-
-        _lblToolsAnchorStats = new Label
-        {
-            Text = "",
-            AutoSize = true,
-            Font = Theme.Body,
-            ForeColor = Theme.Ink,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 7, 0, 4),
-        };
-        pick.Controls.Add(_lblToolsAnchorStats, 1, 0);
-        AddRow(body, pick);
-
-        _lblToolsAnchorModelInfo = new Label
-        {
-            Text = "",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 0, 0, 2),
-        };
-        AddRow(body, _lblToolsAnchorModelInfo);
-
-        _lblToolsAnchorCalibInfo = new Label
-        {
-            Text = "",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        AddRow(body, _lblToolsAnchorCalibInfo);
-
-        var flow = ToolsFlow();
-        flow.Controls.Add(ToolsButton("新建学习库", (_, _) => CreateToolsMachine(ToolLibCategory.AnchorV2), false, 112));
-        flow.Controls.Add(ToolsButton("复制当前训练模型", (_, _) => CopyToolsAnchorModel(), false, 150));
-        flow.Controls.Add(ToolsButton("训练并部署", (_, _) => TrainToolsAnchorModel(), true, 116));
-        flow.Controls.Add(ToolsButton("打开目录", (_, _) => OpenToolsAnchorFolder(), false, 96));
-        flow.Controls.Add(ToolsButton("压缩归档", (_, _) => ArchiveToolsMachine(ToolLibCategory.AnchorV2), false, 96));
-        AddRow(body, flow);
-        return card;
-    }
 
     private void RefreshToolsAnchorLibrary()
     {
@@ -385,54 +241,6 @@ public sealed partial class MainForm
 
     // ---------------------------------------------------------------- 机种管理
 
-    private Control BuildToolsMachineCard()
-    {
-        var (card, body) = MakeCard("机种管理");
-        card.Name = "cardToolsMachine";
-
-        var pick = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 1,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        pick.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
-        pick.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-
-        _cboToolsMachineKind = MakeCombo();
-        _cboToolsMachineKind.Margin = new Padding(0, 2, 12, 2);
-        _cboToolsMachineKind.SelectedIndexChanged += (_, _) =>
-        {
-            if (_toolsMachineSyncing) return;
-            RefreshToolsMachinesList();
-        };
-        pick.Controls.Add(_cboToolsMachineKind, 0, 0);
-
-        _lblToolsMachineInfo = new Label
-        {
-            Text = "",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 7, 0, 4),
-        };
-        pick.Controls.Add(_lblToolsMachineInfo, 1, 0);
-        AddRow(body, pick);
-
-        _lvToolsMachines = MakeToolsList(("机种", 200), ("修改时间", 116), ("说明", 470));
-        AddRow(body, _lvToolsMachines);
-
-        var flow = ToolsFlow();
-        flow.Controls.Add(ToolsButton("新建机种", (_, _) => CreateToolsMachine(MachineCategory()), true, 110));
-        flow.Controls.Add(ToolsButton("重命名", (_, _) => RenameToolsMachine(), false, 96));
-        flow.Controls.Add(ToolsButton("压缩归档（删除）", (_, _) => ArchiveToolsMachine(MachineCategory()), false, 156));
-        flow.Controls.Add(ToolsButton("打开目录", (_, _) => OpenToolsMachineFolder(), false, 96));
-        AddRow(body, flow);
-        return card;
-    }
 
     private ToolLibCategory MachineCategory() =>
         _cboToolsMachineKind != null && _cboToolsMachineKind.SelectedIndex == 1
@@ -685,16 +493,4 @@ public sealed partial class MainForm
         Margin = new Padding(0, 0, 0, 6),
     };
 
-    private Button ToolsButton(string text, EventHandler onClick, bool primary, int width)
-    {
-        var b = primary ? Theme.Primary(text) : Theme.Ghost(text);
-        // 固定宽度会把长文案截掉（高 DPI 下更明显），这里只保证最小宽度，实际宽度跟着文字走。
-        b.AutoSize = true;
-        b.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        b.MinimumSize = new Size(width, 34);
-        b.Padding = new Padding(10, 0, 10, 0);
-        b.Margin = new Padding(0, 2, 8, 2);
-        b.Click += onClick;
-        return b;
-    }
 }

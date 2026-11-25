@@ -12,86 +12,8 @@ namespace YoloFool;
 /// </summary>
 public sealed partial class MainForm
 {
-    private CheckBox _chkToolsEnvTraining;
-    private ListView _lvToolsEnv;
-    private Label _lblToolsEnvInfo;
-    private Button _btnToolsEnvCheck;
-    private Button _btnToolsEnvInit;
-    private Button _btnToolsEnvCamera;
     private bool _toolsEnvBusy;
 
-    private Control BuildToolsFirstRunCard()
-    {
-        var (card, body) = MakeCard("首次部署 · 换电脑");
-        card.Name = "cardToolsFirstRun";
-
-        AddRow(body, new Label
-        {
-            Text = "换电脑或第一次启动时用这张卡：检查运行库、目录、模型文件，缺什么一键补齐。日常使用不用管，也不影响标签和数据集。",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 0, 0, 6),
-        });
-
-        _lvToolsEnv = new ListView
-        {
-            View = View.Details,
-            FullRowSelect = true,
-            MultiSelect = false,
-            HideSelection = false,
-            Dock = DockStyle.Top,
-            Height = 168,
-            Font = Theme.Body,
-            BorderStyle = BorderStyle.FixedSingle,
-            BackColor = Theme.Card,
-            ForeColor = Theme.Ink,
-            Margin = new Padding(0, 0, 0, 8),
-        };
-        _lvToolsEnv.Columns.Add("检查项", 150);
-        _lvToolsEnv.Columns.Add("结果", 56);
-        _lvToolsEnv.Columns.Add("说明", 600);
-        AddRow(body, _lvToolsEnv);
-
-        _chkToolsEnvTraining = new CheckBox
-        {
-            Text = "初始化时顺带装训练环境（缺 Python 会自动下载安装，再装 ultralytics，首次几分钟；只装不训练）",
-            Checked = true,
-            AutoSize = true,
-            Font = Theme.Body,
-            ForeColor = Theme.Ink,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        AddRow(body, _chkToolsEnvTraining);
-
-        var flow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = true,
-            BackColor = Theme.Card,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-
-        _btnToolsEnvCheck = ToolsButton("一键检查环境", (_, _) => CheckToolsEnvironment(false), true, 136);
-        _btnToolsEnvInit = ToolsButton("一键初始化", (_, _) => InitToolsEnvironment(), false, 136);
-        _btnToolsEnvCamera = ToolsButton("同时探测相机", (_, _) => CheckToolsEnvironment(true), false, 128);
-        flow.Controls.Add(_btnToolsEnvCheck);
-        flow.Controls.Add(_btnToolsEnvInit);
-        flow.Controls.Add(_btnToolsEnvCamera);
-        AddRow(body, flow);
-
-        _lblToolsEnvInfo = new Label
-        {
-            Text = "还没检查。换电脑后先点“一键检查环境”，缺项的点“一键初始化”。",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 0, 0, 2),
-        };
-        AddRow(body, _lblToolsEnvInfo);
-        return card;
-    }
 
     private async void CheckToolsEnvironment(bool withCamera)
     {

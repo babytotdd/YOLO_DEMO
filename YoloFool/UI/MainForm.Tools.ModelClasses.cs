@@ -31,77 +31,11 @@ public sealed partial class MainForm
         }
     }
 
-    private Label _lblToolsMcInfo;
-    private DataGridView _gridToolsMc;
-    private Button _btnToolsMcRename;
-    private Button _btnToolsMcDelete;
-    private Button _btnToolsMcMute;
-    private Button _btnToolsMcTrain;
     private bool _toolsMcBusy;
     private readonly List<ToolsModelClassRow> _toolsMcRows = new();
 
     // ---------------------------------------------------------------- 布局
 
-    private Control BuildToolsModelClassesCard()
-    {
-        var (card, body) = MakeCard("模型标签（识别用）");
-        card.Name = "cardToolsModelClasses";
-
-        _lblToolsMcInfo = new Label
-        {
-            Text = "还没有模型类别信息。",
-            Font = Theme.Body,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 4),
-        };
-        AddRow(body, _lblToolsMcInfo);
-
-        _gridToolsMc = new DataGridView
-        {
-            Name = "gridToolsMc",
-            Dock = DockStyle.Top,
-            Height = 196,
-            Margin = new Padding(0, 0, 0, 6),
-            TabIndex = 0,
-        };
-        Theme.StyleGrid(_gridToolsMc);
-        _gridToolsMc.Columns.Add(new DataGridViewTextBoxColumn { Name = "colMcIndex", HeaderText = "序", FillWeight = 8 });
-        _gridToolsMc.Columns.Add(new DataGridViewTextBoxColumn { Name = "colMcModel", HeaderText = "模型里的类", FillWeight = 22 });
-        _gridToolsMc.Columns.Add(new DataGridViewTextBoxColumn { Name = "colMcName", HeaderText = "显示名", FillWeight = 20 });
-        _gridToolsMc.Columns.Add(new DataGridViewTextBoxColumn { Name = "colMcBoxes", HeaderText = "框数", FillWeight = 10 });
-        _gridToolsMc.Columns.Add(new DataGridViewTextBoxColumn { Name = "colMcImages", HeaderText = "图片数", FillWeight = 10 });
-        _gridToolsMc.Columns.Add(new DataGridViewTextBoxColumn { Name = "colMcPending", HeaderText = "待复核", FillWeight = 10 });
-        _gridToolsMc.Columns.Add(new DataGridViewTextBoxColumn { Name = "colMcStatus", HeaderText = "状态", FillWeight = 34 });
-        _gridToolsMc.SelectionChanged += (_, _) => SyncToolsMcButtons();
-        _gridToolsMc.CellDoubleClick += (_, e) =>
-        {
-            if (e.RowIndex >= 0) RenameToolsModelClass();
-        };
-        AddRow(body, _gridToolsMc);
-
-        AddRow(body, Theme.Hint("显示名只影响界面；存储名会改 classes.txt 和该类的所有标注框。模型文件不会自动变——改完要重新训练，模型里才认新名字。"));
-
-        var flow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = true,
-            BackColor = Theme.Card,
-            Margin = new Padding(0, 6, 0, 0),
-        };
-        _btnToolsMcRename = ToolsButton("修改标签名", (_, _) => RenameToolsModelClass(), true, 132);
-        _btnToolsMcDelete = ToolsButton("从数据集删除", (_, _) => DeleteToolsModelClass(), false, 130);
-        _btnToolsMcMute = ToolsButton("加入屏蔽", (_, _) => MuteToolsModelClass(), false, 110);
-        _btnToolsMcTrain = ToolsButton("再训练并部署", (_, _) => RetrainToolsModelClasses(), false, 140);
-        flow.Controls.Add(_btnToolsMcRename);
-        flow.Controls.Add(_btnToolsMcDelete);
-        flow.Controls.Add(_btnToolsMcMute);
-        flow.Controls.Add(_btnToolsMcTrain);
-        AddRow(body, flow);
-
-        return card;
-    }
 
     // ---------------------------------------------------------------- 刷新
 

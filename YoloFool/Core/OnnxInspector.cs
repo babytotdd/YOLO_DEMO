@@ -45,6 +45,7 @@ internal static class OnnxInspector
         YoloModelKind.YOLOv8Seg => "分割",
         YoloModelKind.YOLOv8Det => "检测",
         YoloModelKind.YOLOv11Det => "检测",
+        YoloModelKind.YOLOv26Det => "检测（YOLO26 端到端）",
         _ => "未知",
     };
 
@@ -62,7 +63,14 @@ internal static class OnnxInspector
                 {
                     case "detect":
                     case "det":
-                        return YoloModelKind.YOLOv8Det;
+                    {
+                        // YOLO26 端到端导出的 onnx 输出是 [1,300,6]（框已解码、无 NMS），
+                        // 用 Yolov8 类加载会静默给出上千个假框，所以 metadata 里 end2end=True 时必须走 YOLO26 分支。
+                        var e2e = ReadMeta(session, "end2end");
+                        return string.Equals(e2e, "true", StringComparison.OrdinalIgnoreCase) || e2e == "1"
+                            ? YoloModelKind.YOLOv26Det
+                            : YoloModelKind.YOLOv8Det;
+                    }
                     case "segment":
                     case "seg":
                         return YoloModelKind.YOLOv8Seg;
@@ -81,14 +89,16 @@ internal static class OnnxInspector
         }
     }
 
-    private static string ReadTask(InferenceSession session)
+    private static string ReadTask(InferenceSession session) => ReadMeta(session, "task");
+
+    private static string ReadMeta(InferenceSession session, string key)
     {
         try
         {
             var map = session.ModelMetadata?.CustomMetadataMap;
             if (map == null) return null;
             foreach (var kv in map)
-                if (string.Equals(kv.Key, "task", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase))
                     return kv.Value;
         }
         catch
@@ -109,6 +119,7 @@ internal static class OnnxInspector
 
         bool sawMaskPrototype = false;
         bool sawBoxOutput = false;
+        bool sawEndToEnd = false;
         foreach (var md in outputs.Values)
         {
             var dims = md?.Dimensions;
@@ -121,11 +132,14 @@ internal static class OnnxInspector
             else if (dims.Length == 3)
             {
                 int ch = dims[1];
-                if (ch >= 5) sawBoxOutput = true;
+                // YOLO26 端到端输出：[1,300,6]（300 个候选框 × (x1,y1,x2,y2,conf,cls)）
+                if (dims[2] == 6 && ch > 0 && ch <= 3000) sawEndToEnd = true;
+                else if (ch >= 5) sawBoxOutput = true;
             }
         }
 
         if (sawMaskPrototype) return YoloModelKind.YOLOv8Seg;
+        if (sawEndToEnd) return YoloModelKind.YOLOv26Det;
         if (sawBoxOutput) return YoloModelKind.YOLOv8Det;
         return null;
     }

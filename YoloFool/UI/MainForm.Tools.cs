@@ -16,362 +16,10 @@ namespace YoloFool;
 /// </summary>
 public sealed partial class MainForm
 {
-    private Label _lblToolsModelMain;
-    private Label _lblToolsModelMeta;
-    private Label _lblToolsModelClasses;
-    private Label _lblToolsModelTrain;
-    private Label _lblToolsDatasetStats;
-    private Label _lblToolsDatasetClasses;
-    private Label _lblToolsDatasetExtra;
-    private Label _lblToolsLabelsInfo;
-    private DataGridView _gridToolsLabels;
-    private Label _lblToolsBackupInfo;
-    private Label _lblToolsMisdetect;
-    private ListBox _lvToolsBackups;
-    private Button _btnToolsUseModel;
     private readonly List<string> _toolsBackups = new();
 
     // ---------------------------------------------------------------- 布局
 
-    private Control BuildToolsPage()
-    {
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            BackColor = Theme.Bg,
-        };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        root.Controls.Add(BuildToolsToolbar(), 0, 0);
-
-        var scroll = new Panel
-        {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            BackColor = Theme.Bg,
-            Margin = Padding.Empty,
-        };
-        var stack = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 1,
-            RowCount = 0,
-            BackColor = Theme.Bg,
-            Margin = Padding.Empty,
-        };
-        stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        AddRow(stack, BuildToolsFirstRunCard());
-        AddRow(stack, BuildToolsLibraryCard());
-        AddRow(stack, BuildToolsModelCard());
-        AddRow(stack, BuildToolsModelClassesCard());
-        AddRow(stack, BuildToolsAnchorLibraryCard());
-        AddRow(stack, BuildToolsMachineCard());
-        AddRow(stack, BuildToolsDatasetCard());
-        AddRow(stack, BuildToolsLabelCard());
-        AddRow(stack, BuildToolsBackupCard());
-        AddRow(stack, BuildToolsMisdetectCard());
-        scroll.Controls.Add(stack);
-        root.Controls.Add(scroll, 0, 1);
-
-        if (_pageTools != null) _pageTools.Enter += (_, _) => RefreshToolsPage();
-        RefreshToolsPage();
-        return root;
-    }
-
-    private Control BuildToolsToolbar()
-    {
-        var bar = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            ColumnCount = 3,
-            RowCount = 1,
-            Margin = new Padding(0, 0, 0, 8),
-        };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        bar.Controls.Add(new Label
-        {
-            Text = "我的模型",
-            Font = Theme.Section,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 4, 12, 4),
-        }, 0, 0);
-
-        bar.Controls.Add(new Label
-        {
-            Text = "训练好的模型、数据集、备份和误检样本都在这里，不用记路径。",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 7, 12, 4),
-        }, 1, 0);
-
-        var btnRefresh = Theme.Ghost("刷新");
-        Stretch(btnRefresh, 84, 32);
-        btnRefresh.Anchor = AnchorStyles.Right;
-        btnRefresh.Margin = new Padding(0, 2, 0, 2);
-        btnRefresh.Click += (_, _) => RefreshToolsPage();
-        bar.Controls.Add(btnRefresh, 2, 0);
-        return bar;
-    }
-
-    private Control BuildToolsModelCard()
-    {
-        var (card, body) = MakeCard("训练模型");
-        card.Name = "cardToolsModel";
-
-        _lblToolsModelMain = new Label
-        {
-            Text = "尚未训练模型",
-            Font = Theme.BodyBold,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        AddRow(body, _lblToolsModelMain);
-
-        _lblToolsModelMeta = Theme.Hint("");
-        AddRow(body, _lblToolsModelMeta);
-
-        _lblToolsModelClasses = Theme.Hint("");
-        AddRow(body, _lblToolsModelClasses);
-
-        _lblToolsModelTrain = Theme.Hint("");
-        AddRow(body, _lblToolsModelTrain);
-
-        var flow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            BackColor = Theme.Card,
-            Margin = new Padding(0, 8, 0, 0),
-        };
-        _btnToolsUseModel = Theme.Primary("用这个模型识别");
-        _btnToolsUseModel.Name = "btnToolsUseModel";
-        Stretch(_btnToolsUseModel, 140, 34);
-        _btnToolsUseModel.Margin = new Padding(0, 2, 8, 2);
-        _btnToolsUseModel.Click += async (_, _) => await UseTrainedModelAsync(true);
-        flow.Controls.Add(_btnToolsUseModel);
-
-        var btnBackup = Theme.Ghost("备份当前模型");
-        Stretch(btnBackup, 120, 34);
-        btnBackup.Margin = new Padding(0, 2, 8, 2);
-        btnBackup.Click += (_, _) => BackupModelInteractive();
-        flow.Controls.Add(btnBackup);
-
-        var btnOpen = Theme.Ghost("打开模型文件夹");
-        Stretch(btnOpen, 130, 34);
-        btnOpen.Margin = new Padding(0, 2, 8, 2);
-        btnOpen.Click += (_, _) => OpenFolder(AppPaths.ModelsDir, "模型文件夹");
-        flow.Controls.Add(btnOpen);
-
-        AddRow(body, flow);
-        return card;
-    }
-
-    private Control BuildToolsDatasetCard()
-    {
-        var (card, body) = MakeCard("数据集");
-        card.Name = "cardToolsDataset";
-
-        _lblToolsDatasetStats = new Label
-        {
-            Text = "数据集：0 张图片 · 0 个框 · 0 类",
-            Font = Theme.Body,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        AddRow(body, _lblToolsDatasetStats);
-
-        _lblToolsDatasetClasses = Theme.Hint("");
-        AddRow(body, _lblToolsDatasetClasses);
-
-        _lblToolsDatasetExtra = Theme.Hint("");
-        AddRow(body, _lblToolsDatasetExtra);
-
-        var flow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            BackColor = Theme.Card,
-            Margin = new Padding(0, 8, 0, 0),
-        };
-
-        var btnRebuild = Theme.Ghost("重建训练集");
-        Stretch(btnRebuild, 120, 34);
-        btnRebuild.Margin = new Padding(0, 2, 8, 2);
-        btnRebuild.Click += (_, _) => RebuildTrainingSet();
-        flow.Controls.Add(btnRebuild);
-
-        var btnOpen = Theme.Ghost("打开数据集文件夹");
-        Stretch(btnOpen, 140, 34);
-        btnOpen.Margin = new Padding(0, 2, 8, 2);
-        btnOpen.Click += (_, _) => OpenFolder(AppPaths.DatasetDir, "数据集文件夹");
-        flow.Controls.Add(btnOpen);
-
-        AddRow(body, flow);
-        return card;
-    }
-
-    private Control BuildToolsLabelCard()
-    {
-        var (card, body) = MakeCard("标签管理");
-        card.Name = "cardToolsLabels";
-
-        _lblToolsLabelsInfo = new Label
-        {
-            Text = "标签：还没有类别",
-            Font = Theme.Body,
-            ForeColor = Theme.Ink,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        AddRow(body, _lblToolsLabelsInfo);
-
-        _gridToolsLabels = new DataGridView
-        {
-            Name = "gridToolsLabels",
-            Dock = DockStyle.Top,
-            Height = 148,
-            Margin = new Padding(0, 0, 0, 6),
-            TabIndex = 0,
-        };
-        Theme.StyleGrid(_gridToolsLabels);
-        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelName", HeaderText = "标签", FillWeight = 28 });
-        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelEn", HeaderText = "存储名（训练用）", FillWeight = 30 });
-        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelBoxes", HeaderText = "框数", FillWeight = 14 });
-        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelImages", HeaderText = "图片数", FillWeight = 14 });
-        _gridToolsLabels.Columns.Add(new DataGridViewTextBoxColumn { Name = "colLabelPending", HeaderText = "待复核", FillWeight = 14 });
-        _gridToolsLabels.CellDoubleClick += (_, e) =>
-        {
-            if (e.RowIndex >= 0) OpenLabelDialog(RowLabelEn(e.RowIndex), false);
-        };
-        AddRow(body, _gridToolsLabels);
-
-        AddRow(body, Theme.Hint("删标签会把对应的标注一起从数据集里删掉（删前自动备份 annotations.json / classes.txt），当前模型不变；想让它立刻不再显示，在弹窗里勾选“同时屏蔽”。"));
-
-        var flow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            BackColor = Theme.Card,
-            Margin = new Padding(0, 8, 0, 0),
-        };
-
-        var btnView = Theme.Primary("查看训练内容");
-        Stretch(btnView, 140, 34);
-        btnView.Margin = new Padding(0, 2, 8, 2);
-        btnView.Click += (_, _) => ViewSelectedLabel();
-        flow.Controls.Add(btnView);
-
-        var btnDelete = Theme.Ghost("删除这个标签");
-        Stretch(btnDelete, 132, 34);
-        btnDelete.ForeColor = Theme.Danger;
-        btnDelete.Margin = new Padding(0, 2, 8, 2);
-        btnDelete.Click += (_, _) => DeleteSelectedLabel();
-        flow.Controls.Add(btnDelete);
-
-        AddRow(body, flow);
-        return card;
-    }
-
-    private Control BuildToolsBackupCard()
-    {
-        var (card, body) = MakeCard("模型备份");
-        card.Name = "cardToolsBackup";
-
-        _lvToolsBackups = new ListBox
-        {
-            Name = "lvToolsBackups",
-            Dock = DockStyle.Top,
-            Height = 110,
-            Font = Theme.Mono,
-            BorderStyle = BorderStyle.FixedSingle,
-            IntegralHeight = false,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        AddRow(body, _lvToolsBackups);
-
-        _lblToolsBackupInfo = Theme.Hint("");
-        AddRow(body, _lblToolsBackupInfo);
-
-        var flow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            BackColor = Theme.Card,
-            Margin = new Padding(0, 8, 0, 0),
-        };
-
-        var btnRestore = Theme.Ghost("恢复选中备份");
-        Stretch(btnRestore, 130, 34);
-        btnRestore.Margin = new Padding(0, 2, 8, 2);
-        btnRestore.Click += (_, _) => RestoreBackupInteractive();
-        flow.Controls.Add(btnRestore);
-
-        var btnDelete = Theme.Ghost("删除选中备份");
-        Stretch(btnDelete, 130, 34);
-        btnDelete.Margin = new Padding(0, 2, 8, 2);
-        btnDelete.Click += (_, _) => DeleteBackupInteractive();
-        flow.Controls.Add(btnDelete);
-
-        var btnOpen = Theme.Ghost("打开备份文件夹");
-        Stretch(btnOpen, 140, 34);
-        btnOpen.Margin = new Padding(0, 2, 8, 2);
-        btnOpen.Click += (_, _) => OpenFolder(AppPaths.ModelBackupDir, "备份文件夹");
-        flow.Controls.Add(btnOpen);
-
-        AddRow(body, flow);
-        return card;
-    }
-
-    private Control BuildToolsMisdetectCard()
-    {
-        var (card, body) = MakeCard("误检样本");
-        card.Name = "cardToolsMisdetect";
-
-        _lblToolsMisdetect = Theme.Hint("");
-        AddRow(body, _lblToolsMisdetect);
-
-        var flow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = false,
-            BackColor = Theme.Card,
-            Margin = new Padding(0, 8, 0, 0),
-        };
-
-        var btnOpen = Theme.Ghost("打开误检文件夹");
-        Stretch(btnOpen, 140, 34);
-        btnOpen.Margin = new Padding(0, 2, 8, 2);
-        btnOpen.Click += (_, _) => OpenFolder(AppPaths.MisdetectDir, "误检文件夹");
-        flow.Controls.Add(btnOpen);
-
-        var btnClear = Theme.Ghost("清空误检样本");
-        Stretch(btnClear, 130, 34);
-        btnClear.Margin = new Padding(0, 2, 8, 2);
-        btnClear.Click += (_, _) => ClearMisdetectSamples();
-        flow.Controls.Add(btnClear);
-
-        AddRow(body, flow);
-        return card;
-    }
 
     // ---------------------------------------------------------------- 刷新
 
@@ -923,5 +571,84 @@ public sealed partial class MainForm
         if (!File.Exists(file)) return 0;
         try { return File.ReadLines(file).Count(l => !string.IsNullOrWhiteSpace(l)); }
         catch { return 0; }
+    }
+    /// <summary>
+    /// 工具页的静态布局在 MainForm.Designer.cs 里（设计器可见），这里只做运行期接线。
+    /// </summary>
+    private void InitializeToolsPage()
+    {
+        Theme.StyleGrid(_gridToolsLabels);
+        Theme.StyleGrid(_gridToolsMc);
+
+        _btnToolsRefresh.Click += (_, _) => RefreshToolsPage();
+        _btnToolsEnvCheck.Click += (_, _) => CheckToolsEnvironment(false);
+        _btnToolsEnvInit.Click += (_, _) => InitToolsEnvironment();
+        _btnToolsEnvCamera.Click += (_, _) => CheckToolsEnvironment(true);
+
+        _cboToolsLibCategory.SelectedIndexChanged += (_, _) =>
+        {
+            if (_toolsLibSyncing) return;
+            RefreshToolsLibraryModels();
+        };
+        _lvToolsLibModels.SelectedIndexChanged += (_, _) => SyncToolsLibButtons();
+        _lvToolsLibModels.DoubleClick += (_, _) => UseToolsLibModel();
+        _btnToolsLibUse.Click += (_, _) => UseToolsLibModel();
+        _btnToolsLibOpen.Click += (_, _) => OpenToolsLibFolder();
+        _btnToolsLibFolderOpen.Click += (_, _) => OpenToolsLibFolder();
+
+        _btnToolsUseModel.Click += async (_, _) => await UseTrainedModelAsync(true);
+        _btnToolsModelBackup.Click += (_, _) => BackupModelInteractive();
+        _btnToolsModelFolder.Click += (_, _) => OpenFolder(AppPaths.ModelsDir, "模型文件夹");
+
+        _gridToolsMc.SelectionChanged += (_, _) => SyncToolsMcButtons();
+        _gridToolsMc.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0) RenameToolsModelClass();
+        };
+        _btnToolsMcRename.Click += (_, _) => RenameToolsModelClass();
+        _btnToolsMcDelete.Click += (_, _) => DeleteToolsModelClass();
+        _btnToolsMcMute.Click += (_, _) => MuteToolsModelClass();
+        _btnToolsMcTrain.Click += (_, _) => RetrainToolsModelClasses();
+
+        _cboToolsAnchorModel.SelectedIndexChanged += (_, _) =>
+        {
+            if (_toolsMachineSyncing) return;
+            RefreshToolsAnchorDetail();
+        };
+        _btnToolsAnchorNew.Click += (_, _) => CreateToolsMachine(ToolLibCategory.AnchorV2);
+        _btnToolsAnchorCopy.Click += (_, _) => CopyToolsAnchorModel();
+        _btnToolsAnchorTrain.Click += (_, _) => TrainToolsAnchorModel();
+        _btnToolsAnchorFolder.Click += (_, _) => OpenToolsAnchorFolder();
+        _btnToolsAnchorArchive.Click += (_, _) => ArchiveToolsMachine(ToolLibCategory.AnchorV2);
+
+        _cboToolsMachineKind.SelectedIndexChanged += (_, _) =>
+        {
+            if (_toolsMachineSyncing) return;
+            RefreshToolsMachinesList();
+        };
+        _btnToolsMachineNew.Click += (_, _) => CreateToolsMachine(MachineCategory());
+        _btnToolsMachineRename.Click += (_, _) => RenameToolsMachine();
+        _btnToolsMachineArchive.Click += (_, _) => ArchiveToolsMachine(MachineCategory());
+        _btnToolsMachineFolder.Click += (_, _) => OpenToolsMachineFolder();
+
+        _btnToolsDatasetRebuild.Click += (_, _) => RebuildTrainingSet();
+        _btnToolsDatasetFolder.Click += (_, _) => OpenFolder(AppPaths.DatasetDir, "数据集文件夹");
+
+        _gridToolsLabels.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0) OpenLabelDialog(RowLabelEn(e.RowIndex), false);
+        };
+        _btnToolsLabelView.Click += (_, _) => ViewSelectedLabel();
+        _btnToolsLabelDelete.Click += (_, _) => DeleteSelectedLabel();
+
+        _btnToolsBackupRestore.Click += (_, _) => RestoreBackupInteractive();
+        _btnToolsBackupDelete.Click += (_, _) => DeleteBackupInteractive();
+        _btnToolsBackupFolder.Click += (_, _) => OpenFolder(AppPaths.ModelBackupDir, "备份文件夹");
+
+        _btnToolsMisdetectFolder.Click += (_, _) => OpenFolder(AppPaths.MisdetectDir, "误检文件夹");
+        _btnToolsMisdetectClear.Click += (_, _) => ClearMisdetectSamples();
+
+        _pageTools.Enter += (_, _) => RefreshToolsPage();
+        RefreshToolsPage();
     }
 }

@@ -40,7 +40,10 @@ internal static class AppPaths
     public static string VenvDir => Path.Combine(ToolsDir, "yolovenv");
     public static string VenvPython => Path.Combine(VenvDir, "Scripts", "python.exe");
     public static string YoloExe => Path.Combine(VenvDir, "Scripts", "yolo.exe");
-    public static string BaseWeight => Path.Combine(ToolsDir, "yolov8n.pt");
+    /// <summary>YOLO26 基础权重：存在时优先用于训练，导出的 ONNX 才是端到端（[1,300,6]），推理更快。</summary>
+    public static string BaseWeight26 => Path.Combine(ToolsDir, "yolo26n.pt");
+
+    public static string BaseWeight => File.Exists(BaseWeight26) ? BaseWeight26 : Path.Combine(ToolsDir, "yolov8n.pt");
 
     /// <summary>NuGet 包自带的 COCO 预训练模型（只做“开箱即用”的默认模型）。</summary>
     public static string DefaultCocoModel

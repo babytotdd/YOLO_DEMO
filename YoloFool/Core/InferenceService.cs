@@ -36,6 +36,7 @@ internal sealed class InferenceService : IDisposable
         {
             YoloModelKind.YOLOv11Det => new Yolov11DetModel((Yolov11DetConfig)cfg),
             YoloModelKind.YOLOv8Seg => new Yolov8SegModel((Yolov8SegConfig)cfg),
+            YoloModelKind.YOLOv26Det => new Yolov26DetModel((Yolov26DetConfig)cfg),
             _ => new Yolov8DetModel((Yolov8DetConfig)cfg),
         };
         sw.Stop();
@@ -134,6 +135,9 @@ internal sealed class InferenceService : IDisposable
         {
             YoloModelKind.YOLOv11Det => new Yolov11DetConfig(o.ModelPath, InferenceBackend.OnnxRuntime, o.Device, o.Confidence, o.Nms),
             YoloModelKind.YOLOv8Seg => new Yolov8SegConfig(o.ModelPath, InferenceBackend.OnnxRuntime, o.Device, o.Confidence, o.Nms),
+            // YOLO26 端到端导出的 onnx 没有 5 参构造，必须显式给出批大小与预处理（与 5 参构造的默认值一致：Pad + 0-1 归一化）。
+            YoloModelKind.YOLOv26Det => new Yolov26DetConfig(o.ModelPath, InferenceBackend.OnnxRuntime, o.Device, o.Confidence, o.Nms,
+                1, ImageResizeMode.Pad, ImageNormalizationType.Scale_0_1),
             _ => new Yolov8DetConfig(o.ModelPath, InferenceBackend.OnnxRuntime, o.Device, o.Confidence, o.Nms),
         };
         cfg.SetTargetOnnxRuntimeDeviceType(o.Provider);

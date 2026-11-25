@@ -16,13 +16,7 @@ public partial class MainForm
         public string Name;
     }
 
-    private TabPage _pageMultiCam;
     private readonly List<McSlot> _mcSlots = new();
-    private FlowLayoutPanel _mcWall;
-    private DataGridView _mcGrid;
-    private Label _mcSelInfo;
-    private Label _mcProcInfo;
-    private NumericUpDown _mcNumIndex;
     private System.Windows.Forms.Timer _mcTimer;
     private Process _mcProc;
     private TimeSpan _mcLastProcCpu;
@@ -34,362 +28,8 @@ public partial class MainForm
     private bool _mcSyncing;
     private McSlot _mcSelected;
 
-    private ComboBox _mcCmbRes;
-    private ComboBox _mcCmbFmt;
-    private NumericUpDown _mcNumW;
-    private NumericUpDown _mcNumH;
-    private NumericUpDown _mcNumFps;
-    private NumericUpDown _mcNumExp;
-    private NumericUpDown _mcNumWb;
-    private NumericUpDown _mcNumGain;
-    private NumericUpDown _mcNumBright;
-    private NumericUpDown _mcNumContrast;
-    private NumericUpDown _mcNumSat;
-    private CheckBox _mcChkAutoExp;
-    private CheckBox _mcChkAutoWb;
-    private Button _mcBtnApply;
-    private Label _mcLblActual;
 
     private const int McTileGap = 10;
-
-    /// <summary>“多相机 · 资源”页：左边监控墙，右边开关与指标。</summary>
-    private Control BuildMultiCamPage()
-    {
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
-            BackColor = Theme.Bg,
-        };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 360));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-        _mcWall = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            WrapContents = true,
-            Padding = new Padding(6),
-            BackColor = Color.FromArgb(24, 27, 33),
-            Margin = new Padding(0),
-        };
-        _mcWall.Resize += (_, _) => RelayoutWall();
-        root.Controls.Add(_mcWall, 0, 0);
-        root.Controls.Add(BuildMultiCamSide(), 1, 0);
-
-        _mcTimer = new System.Windows.Forms.Timer { Interval = 33 };
-        _mcTimer.Tick += (_, _) => OnMultiCamTick();
-        _mcTimer.Start();
-
-        _mcProc = Process.GetCurrentProcess();
-        _mcLastProcCpu = _mcProc.TotalProcessorTime;
-        _mcLastProcAt = DateTime.UtcNow;
-
-        AddCameraSlot(0);
-        AddCameraSlot(1);
-        return root;
-    }
-
-    private Control BuildMultiCamSide()
-    {
-        var side = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 9,
-            BackColor = Theme.Bg,
-            Padding = new Padding(10, 6, 4, 6),
-            Margin = new Padding(0),
-        };
-        side.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.Percent, 26));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.Percent, 46));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.Percent, 28));
-
-        var title = Theme.SectionLabel("相机");
-        title.Margin = new Padding(0, 0, 0, 4);
-        side.Controls.Add(title, 0, 0);
-
-        _mcGrid = new DataGridView { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 6) };
-        Theme.StyleGrid(_mcGrid);
-        _mcGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "相机", FillWeight = 34 });
-        _mcGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "状态", FillWeight = 24 });
-        _mcGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "分辨率", FillWeight = 22 });
-        _mcGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "fps", FillWeight = 10 });
-        _mcGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CPU线程", FillWeight = 14 });
-        _mcGrid.SelectionChanged += (_, _) => OnGridSelectionChanged();
-        side.Controls.Add(_mcGrid, 0, 1);
-
-        var row1 = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 0, 0, 2) };
-        var btnOpen = Theme.Primary("打开选中");
-        btnOpen.AutoSize = true;
-        btnOpen.Click += (_, _) => ToggleCamera(_mcSelected, true);
-        var btnClose = Theme.Ghost("关闭选中");
-        btnClose.AutoSize = true;
-        btnClose.Click += (_, _) => ToggleCamera(_mcSelected, false);
-        row1.Controls.Add(btnOpen);
-        row1.Controls.Add(btnClose);
-        side.Controls.Add(row1, 0, 2);
-
-        var row2 = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 0, 0, 2) };
-        var btnAllOn = Theme.Success("全部打开");
-        btnAllOn.AutoSize = true;
-        btnAllOn.Click += (_, _) => { foreach (var s in _mcSlots) ToggleCamera(s, true); };
-        var btnAllOff = Theme.Ghost("全部关闭");
-        btnAllOff.AutoSize = true;
-        btnAllOff.Click += (_, _) => { foreach (var s in _mcSlots) ToggleCamera(s, false); };
-        row2.Controls.Add(btnAllOn);
-        row2.Controls.Add(btnAllOff);
-        side.Controls.Add(row2, 0, 3);
-
-        var row3 = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 0, 0, 2) };
-        _mcNumIndex = new NumericUpDown
-        {
-            Minimum = 0,
-            Maximum = 15,
-            Value = 0,
-            Width = 54,
-            Font = Theme.Body,
-            Margin = new Padding(0, 6, 6, 0),
-        };
-        var btnAdd = Theme.Ghost("＋ 添加");
-        btnAdd.AutoSize = true;
-        btnAdd.Click += (_, _) => AddCameraSlot((int)_mcNumIndex.Value);
-        var btnRemove = Theme.Ghost("－ 移除");
-        btnRemove.AutoSize = true;
-        btnRemove.Click += (_, _) => RemoveSelectedSlot();
-        var lblIndex = Theme.Hint("index");
-        lblIndex.Margin = new Padding(0, 9, 4, 0);
-        row3.Controls.Add(lblIndex);
-        row3.Controls.Add(_mcNumIndex);
-        row3.Controls.Add(btnAdd);
-        row3.Controls.Add(btnRemove);
-        side.Controls.Add(row3, 0, 4);
-
-        _mcSelInfo = new Label
-        {
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 2, 0, 4),
-        };
-        side.Controls.Add(_mcSelInfo, 0, 5);
-
-        side.Controls.Add(BuildMcSettingsPanel(), 0, 6);
-
-        var procTitle = Theme.SectionLabel("本进程资源");
-        procTitle.Margin = new Padding(0, 4, 0, 2);
-        side.Controls.Add(procTitle, 0, 7);
-
-        var bottom = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
-        _mcProcInfo = new Label
-        {
-            AutoSize = true,
-            Dock = DockStyle.Top,
-            Font = Theme.Small,
-            ForeColor = Theme.Ink,
-            Margin = new Padding(0),
-        };
-        var hint = Theme.Hint("CPU 的两种口径：表格里是“本路采集线程”（只含缩放+拷贝，所以很小），" +
-                              "驱动内部的解码/传输入口线程不计在内；“整进程 CPU”才是整个程序真实占用，评估用后者。" +
-                              "点左侧任意一格选中一路，右侧“采集设置”只改这一路，改完重新打开才生效。");
-        hint.AutoSize = true;
-        hint.MaximumSize = new Size(320, 0);
-        hint.Dock = DockStyle.Top;
-        bottom.Controls.Add(hint);
-        bottom.Controls.Add(_mcProcInfo);
-        side.Controls.Add(bottom, 0, 8);
-
-        return side;
-    }
-
-    /// <summary>选中相机的采集参数（分辨率/帧率/像素格式/曝光/增益/亮度…）。</summary>
-    private Control BuildMcSettingsPanel()
-    {
-        var host = new Panel
-        {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            BackColor = Theme.Bg,
-            Margin = new Padding(0, 2, 0, 2),
-        };
-
-        var grid = new TableLayoutPanel
-        {
-            ColumnCount = 2,
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            BackColor = Theme.Bg,
-            Margin = new Padding(0),
-        };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-
-        void AddRow(string label, Control control)
-        {
-            int row = grid.RowCount++;
-            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            var lbl = new Label
-            {
-                Text = label,
-                AutoSize = true,
-                Font = Theme.Small,
-                ForeColor = Theme.Muted,
-                Margin = new Padding(0, 7, 4, 4),
-            };
-            control.Dock = DockStyle.Left;
-            control.Margin = new Padding(0, 4, 0, 4);
-            grid.Controls.Add(lbl, 0, row);
-            grid.Controls.Add(control, 1, row);
-        }
-
-        var head = Theme.SectionLabel("采集设置（选中相机）");
-        head.Margin = new Padding(0, 2, 0, 4);
-        grid.RowCount = 1;
-        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        grid.Controls.Add(head, 0, 0);
-        grid.SetColumnSpan(head, 2);
-
-        _mcCmbRes = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Font = Theme.Body,
-            Width = 108,
-            Margin = new Padding(0, 4, 6, 4),
-        };
-        _mcCmbRes.Items.AddRange(new object[] { "640 × 480", "800 × 600", "1280 × 720", "1920 × 1080", "自定义" });
-        _mcCmbRes.SelectedIndexChanged += (_, _) => OnResolutionPresetChanged();
-
-        _mcNumW = NewSpin(160, 3840, 2, 1280, 64);
-        _mcNumH = NewSpin(120, 2160, 2, 720, 64);
-        var sizeRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0), BackColor = Theme.Bg };
-        var times = new Label
-        {
-            Text = "×",
-            AutoSize = true,
-            Font = Theme.Body,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(2, 8, 2, 0),
-        };
-        sizeRow.Controls.Add(_mcCmbRes);
-        sizeRow.Controls.Add(_mcNumW);
-        sizeRow.Controls.Add(times);
-        sizeRow.Controls.Add(_mcNumH);
-        AddRow("分辨率", sizeRow);
-
-        _mcNumFps = NewSpin(1, 120, 1, 30, 58);
-        _mcCmbFmt = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Font = Theme.Body,
-            Width = 76,
-            Margin = new Padding(6, 4, 0, 4),
-        };
-        _mcCmbFmt.Items.AddRange(new object[] { "自动", "MJPG", "YUY2" });
-        _mcCmbFmt.SelectedIndex = 0;
-        var fpsRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0), BackColor = Theme.Bg };
-        fpsRow.Controls.Add(_mcNumFps);
-        fpsRow.Controls.Add(_mcCmbFmt);
-        AddRow("帧率/格式", fpsRow);
-
-        _mcChkAutoExp = new CheckBox
-        {
-            Text = "自动",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Ink,
-            Margin = new Padding(0, 9, 6, 0),
-            Checked = true,
-        };
-        _mcChkAutoExp.CheckedChanged += (_, _) => SyncSettingsEnabled();
-        _mcNumExp = NewSpin(-13, 0, 1, -6, 58);
-        var expRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0), BackColor = Theme.Bg };
-        expRow.Controls.Add(_mcChkAutoExp);
-        expRow.Controls.Add(_mcNumExp);
-        AddRow("曝光", expRow);
-
-        _mcChkAutoWb = new CheckBox
-        {
-            Text = "自动",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Ink,
-            Margin = new Padding(0, 9, 6, 0),
-            Checked = true,
-        };
-        _mcChkAutoWb.CheckedChanged += (_, _) => SyncSettingsEnabled();
-        _mcNumWb = NewSpin(2800, 6500, 100, 4600, 70);
-        var wbRow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0), BackColor = Theme.Bg };
-        wbRow.Controls.Add(_mcChkAutoWb);
-        wbRow.Controls.Add(_mcNumWb);
-        AddRow("白平衡", wbRow);
-
-        _mcNumGain = NewSpin(0, 255, 1, 0, 58);
-        AddRow("增益", _mcNumGain);
-
-        _mcNumBright = NewSpin(-64, 64, 1, 0, 58);
-        AddRow("亮度", _mcNumBright);
-
-        _mcNumContrast = NewSpin(0, 64, 1, 32, 58);
-        AddRow("对比度", _mcNumContrast);
-
-        _mcNumSat = NewSpin(0, 128, 1, 64, 58);
-        AddRow("饱和度", _mcNumSat);
-
-        int applyRow = grid.RowCount++;
-        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var applyFlow = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0), BackColor = Theme.Bg };
-        _mcBtnApply = Theme.Primary("应用并重开");
-        _mcBtnApply.AutoSize = true;
-        _mcBtnApply.Click += (_, _) => ApplySelectedSettings();
-        applyFlow.Controls.Add(_mcBtnApply);
-        grid.Controls.Add(applyFlow, 0, applyRow);
-        grid.SetColumnSpan(applyFlow, 2);
-
-        int actualRow = grid.RowCount++;
-        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        _mcLblActual = new Label
-        {
-            Text = "实际：—",
-            AutoSize = true,
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(0, 2, 0, 6),
-        };
-        grid.Controls.Add(_mcLblActual, 0, actualRow);
-        grid.SetColumnSpan(_mcLblActual, 2);
-
-        int noteRow = grid.RowCount++;
-        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var note = Theme.Hint("USB2 相机线速约 18–20MB/s：720p 约 10fps、1080p 约 5fps，CPU 本身很低；驱动不接受的参数会被它自己改掉，看“实际”。");
-        note.MaximumSize = new Size(315, 0);
-        note.Margin = new Padding(0, 0, 0, 4);
-        grid.Controls.Add(note, 0, noteRow);
-        grid.SetColumnSpan(note, 2);
-
-        host.Controls.Add(grid);
-        return host;
-    }
-
-    private static NumericUpDown NewSpin(int min, int max, int step, int value, int width) => new()
-    {
-        Minimum = min,
-        Maximum = max,
-        Increment = step,
-        Value = value,
-        Width = width,
-        Font = Theme.Body,
-        Margin = new Padding(0, 4, 0, 4),
-    };
 
     private void OnResolutionPresetChanged()
     {
@@ -731,5 +371,35 @@ public partial class MainForm
         _mcSlots.Clear();
         _mcProc?.Dispose();
         _mcProc = null;
+    }
+
+    /// <summary>多相机页的静态布局在 MainForm.Designer.cs 里，这里只做运行期接线。</summary>
+    private void InitializeMultiCamPage()
+{
+        Theme.StyleGrid(_mcGrid);
+
+        _mcWall.Resize += (_, _) => RelayoutWall();
+        _mcGrid.SelectionChanged += (_, _) => OnGridSelectionChanged();
+        _btnMcOpen.Click += (_, _) => ToggleCamera(_mcSelected, true);
+        _btnMcClose.Click += (_, _) => ToggleCamera(_mcSelected, false);
+        _btnMcAllOn.Click += (_, _) => { foreach (var s in _mcSlots) ToggleCamera(s, true); };
+        _btnMcAllOff.Click += (_, _) => { foreach (var s in _mcSlots) ToggleCamera(s, false); };
+        _btnMcAdd.Click += (_, _) => AddCameraSlot((int)_mcNumIndex.Value);
+        _btnMcRemove.Click += (_, _) => RemoveSelectedSlot();
+        _mcCmbRes.SelectedIndexChanged += (_, _) => OnResolutionPresetChanged();
+        _mcChkAutoExp.CheckedChanged += (_, _) => SyncSettingsEnabled();
+        _mcChkAutoWb.CheckedChanged += (_, _) => SyncSettingsEnabled();
+        _mcBtnApply.Click += (_, _) => ApplySelectedSettings();
+
+        _mcTimer = new System.Windows.Forms.Timer { Interval = 33 };
+        _mcTimer.Tick += (_, _) => OnMultiCamTick();
+        _mcTimer.Start();
+
+        _mcProc = Process.GetCurrentProcess();
+        _mcLastProcCpu = _mcProc.TotalProcessorTime;
+        _mcLastProcAt = DateTime.UtcNow;
+
+        AddCameraSlot(0);
+        AddCameraSlot(1);
     }
 }

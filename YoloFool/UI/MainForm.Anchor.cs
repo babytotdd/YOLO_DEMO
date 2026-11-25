@@ -19,31 +19,6 @@ namespace YoloFool;
 public sealed partial class MainForm
 {
     // ---------------- 状态 ----------------
-    private TabPage _pageAnchor;
-    private ImageCanvas _picAnchor;
-    private ComboBox _cboAnchorModel;
-    private ComboBox _cboAnchorCamIndex;
-    private ComboBox _cboAnchorRes;
-    private CheckBox _chkAnchorExposure;
-    private NumericUpDown _numAnchorExposure;
-    private Button _btnAnchorCam;
-    private Button _btnAnchorCalib;
-    private Button _btnAnchorJudge;
-    private Label _lblAnchorCamInfo;
-    private Label _lblAnchorModelInfo;
-    private Label _lblAnchorVerdict;
-    private Label _lblAnchorReason;
-    private Label _lblAnchorDetail;
-    private Label _lblAnchorCalibInfo;
-    private Label _lblAnchorJitter;
-    private ListView _lvAnchorHits;
-    private ListView _lvAnchorLog;
-    private NumericUpDown _numAnchorShift;
-    private NumericUpDown _numAnchorRot;
-    private NumericUpDown _numAnchorScale;
-    private NumericUpDown _numAnchorRms;
-    private NumericUpDown _numAnchorConf;
-    private NumericUpDown _numAnchorMin;
     private ToolTip _anchorTip;
 
     private System.Windows.Forms.Timer _anchorTimer;
@@ -59,27 +34,9 @@ public sealed partial class MainForm
     private bool _anchorCameraBusy;
     private bool _anchorModelLoading;
     private bool _anchorOverlayOn = true;
-    private TabControl _anchorTabs;
 
     // ---------------- 检测范围 / 识别目标 ----------------
-    private ListView _lvAnchorZones;
     private ListView _lvAnchorTargets;
-    private Button _btnAnchorZonePick;
-    private Button _btnAnchorZoneEdit;
-    private CheckBox _chkAnchorAdv;
-    private Panel _pnlAnchorTol;
-    private PictureBox _picZoneRef;
-    private Label _lblZoneRefInfo;
-    private Label _lblAnchorZoneInfo;
-    private Label _lblAnchorTargetInfo;
-    private NumericUpDown _numZoneMatch;
-    private NumericUpDown _numZoneSearch;
-    private NumericUpDown _numZoneShift;
-    private ComboBox _cboZoneClass;
-    private CheckBox _chkZoneRequired;
-    private TextBox _txtAnchorTrainLog;
-    private NumericUpDown _numTrainEpochs;
-    private NumericUpDown _numTrainImgsz;
     private AnchorZoneReport _anchorZoneReport;
     private bool _anchorZonePicking;
     private bool _anchorTargetPicking;
@@ -90,469 +47,159 @@ public sealed partial class MainForm
     private Mat _anchorRaw;
 
     // ---------------- 页面骨架 ----------------
-    private TabPage BuildAnchorPage()
+    // 静态控件树已搬进 MainForm.Designer.cs（针床定位 V2 页块），这里只做运行期数据、样式与事件接线。
+    private void InitializeAnchorPage()
     {
-        _pageAnchor = new TabPage("针床定位 V2") { BackColor = Theme.Bg, Padding = new Padding(8) };
-
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            BackColor = Theme.Bg,
-        };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        // 总判定放在右上角（与右侧操作栏同宽），工具栏在左：左边看画面，右边操作和看结果。
-        var top = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Theme.Bg, Margin = Padding.Empty };
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 412f));
-        top.Controls.Add(BuildAnchorToolbar(), 0, 0);
-        top.Controls.Add(BuildAnchorVerdictCard(), 1, 0);
-        root.Controls.Add(top, 0, 0);
-        root.Controls.Add(BuildAnchorBody(), 0, 1);
-
-        _pageAnchor.Controls.Add(root);
-        return _pageAnchor;
-    }
-
-    private Control BuildAnchorToolbar()
-    {
-        var bar = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 1,
-            RowCount = 2,
-            BackColor = Theme.Bg,
-            Margin = new Padding(0, 0, 0, 6),
-        };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        var row1 = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false, BackColor = Theme.Bg, Margin = Padding.Empty };
-        row1.Controls.Add(new Label { Text = "机种", AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Body, Margin = new Padding(0, 9, 6, 0) });
-        _cboAnchorModel = new ComboBox { Width = 150, DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Body, Margin = new Padding(0, 5, 6, 0) };
-        row1.Controls.Add(_cboAnchorModel);
-        var btnNewModel = Theme.Ghost("新建机种");
-        btnNewModel.Margin = new Padding(0, 5, 6, 0);
-        btnNewModel.Click += (_, __) => CreateAnchorModel();
-        row1.Controls.Add(btnNewModel);
-        var btnCopyModel = Theme.Ghost("复制当前模型");
-        btnCopyModel.Margin = new Padding(0, 5, 10, 0);
-        btnCopyModel.Click += (_, __) => CopyAnchorModel();
-        row1.Controls.Add(btnCopyModel);
-        _lblAnchorModelInfo = new Label { Text = "模型：未加载", AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Small, Margin = new Padding(0, 10, 0, 0) };
-        row1.Controls.Add(_lblAnchorModelInfo);
-        bar.Controls.Add(row1, 0, 0);
-
-        var row2 = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false, BackColor = Theme.Bg, Margin = Padding.Empty };
-        row2.Controls.Add(new Label { Text = "相机", AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Body, Margin = new Padding(0, 9, 6, 0) });
-        _cboAnchorCamIndex = new ComboBox { Width = 52, DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Body, Margin = new Padding(0, 5, 6, 0) };
+        // 相机序号 / 分辨率的候选项属运行期数据，控件本身在设计器里。
+        _cboAnchorCamIndex.Items.Clear();
         for (var i = 0; i < 6; i++) _cboAnchorCamIndex.Items.Add(i.ToString());
         _cboAnchorCamIndex.SelectedIndex = 0;
-        row2.Controls.Add(_cboAnchorCamIndex);
 
-        _cboAnchorRes = new ComboBox { Width = 108, DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Body, Margin = new Padding(0, 5, 10, 0) };
+        _cboAnchorRes.Items.Clear();
         _cboAnchorRes.Items.Add("1920×1080");
         _cboAnchorRes.Items.Add("1280×720");
         _cboAnchorRes.SelectedIndex = 0;
-        row2.Controls.Add(_cboAnchorRes);
 
-        _chkAnchorExposure = new CheckBox { Text = "曝光", AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Body, Margin = new Padding(0, 8, 4, 0) };
-        row2.Controls.Add(_chkAnchorExposure);
-        _numAnchorExposure = new NumericUpDown
-        {
-            Minimum = -13,
-            Maximum = 0,
-            Value = -5,
-            Width = 58,
-            Enabled = false,
-            Font = Theme.Body,
-            TextAlign = HorizontalAlignment.Right,
-            Margin = new Padding(0, 5, 10, 0),
-        };
+        // ---------------- 工具栏 ----------------
+        _btnAnchorNewModel.Click += (_, __) => CreateAnchorModel();
+        _btnAnchorCopyModel.Click += (_, __) => CopyAnchorModel();
         _chkAnchorExposure.CheckedChanged += (_, __) => _numAnchorExposure.Enabled = _chkAnchorExposure.Checked;
-        row2.Controls.Add(_numAnchorExposure);
-
-        var btnShot = Theme.Success("拍照");
-        btnShot.Margin = new Padding(0, 5, 8, 0);
-        btnShot.Click += async (_, __) => await CaptureAnchorPhotoAsync();
-        row2.Controls.Add(btnShot);
-
-        _btnAnchorCam = Theme.Primary("打开相机");
-        _btnAnchorCam.Margin = new Padding(0, 5, 8, 0);
+        _btnAnchorShot.Click += async (_, __) => await CaptureAnchorPhotoAsync();
         _btnAnchorCam.Click += async (_, __) => await ToggleAnchorCameraAsync();
-        row2.Controls.Add(_btnAnchorCam);
-
         // 「判定一次」放在相机旁边（m01839）：换板后不用切页签，直接点这里。
-        _btnAnchorJudge = Theme.Primary("判定一次");
-        _btnAnchorJudge.Margin = new Padding(0, 5, 8, 0);
         _btnAnchorJudge.Click += async (_, __) => await AnchorJudgeOnceAsync();
-        row2.Controls.Add(_btnAnchorJudge);
 
-        _lblAnchorCamInfo = new Label { Text = "相机未打开", AutoSize = true, ForeColor = Theme.Muted, Font = Theme.Small, Margin = new Padding(0, 10, 0, 0) };
-        row2.Controls.Add(_lblAnchorCamInfo);
-        bar.Controls.Add(row2, 0, 1);
-
-        return bar;
-    }
-
-    private Control BuildAnchorBody()
-    {
-        var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Theme.Bg };
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 412f));
-
-        _picAnchor = new ImageCanvas
-        {
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0, 0, 10, 0),
-            EmptyText = "① 选机种，把板放上针床\r\n② 打开相机 → 点上方【拍照】\r\n③ 在「① 识别目标」里框选特征（右键确认后才入队）\r\n④ 在「② 检测范围 · 判定」里框范围、采集参考、设匹配率\r\n⑤ 换板后点“判定一次”，结果显示在右上角",
-        };
-        body.Controls.Add(_picAnchor, 0, 0);
-        body.Controls.Add(BuildAnchorSide(), 1, 0);
-        return body;
-    }
-
-    private Control BuildAnchorSide()
-    {
-        var host = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1, BackColor = Theme.Bg };
-        host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        host.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-
-        var tabs = new TabControl { Dock = DockStyle.Fill, Font = Theme.Body };
-        var targetTab = new TabPage("① 识别目标") { BackColor = Theme.Bg, Padding = new Padding(4) };
-        targetTab.Controls.Add(BuildAnchorLearnTab());
-        var zoneTab = new TabPage("② 检测范围 · 判定") { BackColor = Theme.Bg, Padding = new Padding(4) };
-        zoneTab.Controls.Add(BuildAnchorZoneTab());
-        var calibTab = new TabPage("③ 拍基准 · 对比") { BackColor = Theme.Bg, Padding = new Padding(4) };
-        calibTab.Controls.Add(BuildAnchorCalibTab());
-        tabs.TabPages.Add(targetTab);
-        tabs.TabPages.Add(zoneTab);
-        tabs.TabPages.Add(calibTab);
-        tabs.SelectedIndexChanged += (_, __) =>
+        // ---------------- 侧栏页签 ----------------
+        _anchorTabs.SelectedIndexChanged += (_, __) =>
         {
             // 离开第三页就解除“基准/对比画面冻结”，否则实时预览会一直停在对比图。
-            if (!ReferenceEquals(tabs.SelectedTab, calibTab)) _anchorCalibView = false;
+            if (!ReferenceEquals(_anchorTabs.SelectedTab, _tabAnchorCalib)) _anchorCalibView = false;
         };
-        _anchorTabs = tabs;
-        host.Controls.Add(tabs, 0, 0);
-        return host;
-    }
 
-    /// <summary>判定结论固定显示在右上角，换页签也能看到。</summary>
-    private Control BuildAnchorVerdictCard()
-    {
-        var card = new Panel
+        // ---------------- ① 识别目标 ----------------
+        _btnAnchorLearnPick.Click += (_, __) => BeginAnchorTargetPick();
+        _btnAnchorLearnDel.Click += (_, __) => DeleteAnchorDraft();
+        _btnAnchorLearnDelShot.Click += (_, __) => DeleteAnchorSample();
+        _btnAnchorLearnLive.Click += (_, __) =>
         {
-            Dock = DockStyle.Fill,
-            BackColor = Theme.Card,
-            MinimumSize = new Size(0, 96),
-            Size = new Size(0, 96),
-            Margin = new Padding(8, 0, 0, 6),
-            Padding = new Padding(10, 6, 10, 6),
+            if (_anchorEditFrame == null) { SetAnchorCamInfo("现在就是实时画面。"); return; }
+            ExitAnchorEditMode();
+            if (_lvAnchorSamples != null) _lvAnchorSamples.SelectedItems.Clear();
+            SetAnchorCamInfo("已回到实时画面。点上方【拍照】可再拍一张。");
         };
-        var grid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, BackColor = Theme.Card };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96f));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 44f));
-        grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-
-        _lblAnchorVerdict = new Label
+        _lvAnchorDrafts.SelectedIndexChanged += (_, __) => SyncDraftSelectionToCanvas();
+        _lvAnchorDrafts.KeyDown += (_, e) =>
         {
-            Dock = DockStyle.Fill,
-            Text = "—",
-            Font = new Font("Segoe UI", 24f, FontStyle.Bold),
-            ForeColor = Theme.Muted,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Margin = Padding.Empty,
+            if (e.KeyCode != Keys.Delete) return;
+            e.Handled = true;
+            DeleteAnchorDraft();
         };
-        _lblAnchorReason = new Label
+        _lvAnchorSamples.SelectedIndexChanged += (_, __) =>
         {
-            Dock = DockStyle.Fill,
-            Text = "还没有判定",
-            Font = Theme.BodyBold,
-            ForeColor = Theme.Muted,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(8, 0, 0, 0),
+            ShowAnchorSamplePreview();
+            LoadAnchorPhotoFromSelection();
         };
-        _lblAnchorDetail = new Label
+        _btnAnchorTrain.Click += async (_, __) => await TrainAnchorAsync();
+        _btnAnchorTrainRefresh.Click += (_, __) =>
         {
-            Dock = DockStyle.Fill,
-            Text = "放好板 → 到「② 检测范围 · 判定」点“判定一次”。",
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            AutoSize = false,
-            TextAlign = ContentAlignment.TopLeft,
-            Margin = new Padding(0, 4, 0, 0),
+            ShowAnchorTargets();
+            ShowAnchorSamples();
         };
-
-        grid.Controls.Add(_lblAnchorVerdict, 0, 0);
-        grid.Controls.Add(_lblAnchorReason, 1, 0);
-        grid.Controls.Add(_lblAnchorDetail, 0, 1);
-        grid.SetColumnSpan(_lblAnchorDetail, 2);
-        card.Controls.Add(grid);
-        return card;
-    }
-
-    // 旧版“③ 判定”页已被上方 BuildAnchorVerdictCard + BuildAnchorZoneTab 取代，保留备查，不再调用。
-    private Control BuildAnchorJudgeTab()
-    {
-        var side = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, BackColor = Theme.Bg };
-        side.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        side.RowStyles.Add(new RowStyle(SizeType.Absolute, 92f));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        side.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-        side.RowStyles.Add(new RowStyle(SizeType.Absolute, 168f));
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        // 结论
-        var verdictPanel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Card, Margin = new Padding(0, 0, 0, 8), Padding = new Padding(10) };
-        _lblAnchorVerdict = new Label
+        _hostAnchorLearn.VisibleChanged += (_, __) =>
         {
-            Dock = DockStyle.Fill,
-            Text = "—",
-            Font = new Font("Segoe UI", 26f, FontStyle.Bold),
-            ForeColor = Theme.Muted,
-            TextAlign = ContentAlignment.MiddleCenter,
+            if (!_hostAnchorLearn.Visible) return;
+            ShowAnchorTargets();
+            ShowAnchorSamples();
+            UpdateAnchorClassLabel();
         };
-        verdictPanel.Controls.Add(_lblAnchorVerdict);
-        side.Controls.Add(verdictPanel, 0, 0);
 
-        // 原因 + 明细
-        _lblAnchorReason = new Label
+        // ---------------- ② 检测范围 · 判定 ----------------
+        _btnAnchorZonePick.Click += (_, __) => BeginAnchorZonePick();
+        _btnAnchorZoneFromLabel.Click += (_, __) => ShowAnchorZoneClassMenu(_btnAnchorZoneFromLabel);
+        _btnAnchorZoneCapture.Click += (_, __) => CaptureAnchorZoneRef();
+        _btnAnchorZoneEdit.Click += (_, __) => BeginAnchorZoneEdit();
+        _btnAnchorZoneRename.Click += (_, __) => RenameAnchorZone();
+        _btnAnchorZoneRemove.Click += (_, __) => DeleteAnchorZone();
+        _anchorTip?.SetToolTip(_btnAnchorZoneCapture, "把当前画面里这块区域的外观存成模板（采集时板必须放好）。判定时用它比对，匹配率低于下限或位置偏太多就判 NG。");
+        _anchorTip?.SetToolTip(_btnAnchorZoneFromLabel, "从已经框好的标签里挑一个（例如 p1），直接用那个框的范围建检测范围。");
+        _anchorTip?.SetToolTip(_btnAnchorZonePick, "在画面上拖出新范围，右键或回车确认；再点一次取消。");
+        _anchorTip?.SetToolTip(_btnAnchorZoneEdit, "重新调这个范围的位置/大小/角度：拖框移动、拖角点改大小、拖顶部圆点旋转，右键保存（不保存不生效），Esc 放弃。");
+        _anchorTip?.SetToolTip(_btnAnchorZoneRename, "给列表里选中的范围改名（参考图会一起改名，不会丢）。也可以右键列表或按 F2。");
+        _anchorTip?.SetToolTip(_btnAnchorZoneRemove, "删除列表里选中的范围及其参考图。也可以右键列表或按 Delete。");
+        _anchorTip?.SetToolTip(_cboZoneClass, "给这个范围备注它对应哪个识别目标（例如 p1）；留空只做模板匹配。");
+        _lvAnchorZones.SelectedIndexChanged += (_, __) =>
         {
-            Text = "还没有拍基准",
-            AutoSize = true,
-            MaximumSize = new Size(400, 0),
-            Font = Theme.BodyBold,
-            ForeColor = Theme.Ink,
-            Margin = new Padding(2, 0, 2, 3),
+            LoadZoneUiFromSelected();
+            RefreshZoneRefPreview();
         };
-        _lblAnchorDetail = new Label
+        _lvAnchorZones.KeyDown += (_, e) =>
         {
-            Text = "只用「② 检测范围」也能判定；想同时看整体平移/旋转，先在放好的板上点一次“拍基准”。换板只需点“判定一次”。",
-            AutoSize = true,
-            MaximumSize = new Size(400, 0),
-            Font = Theme.Small,
-            ForeColor = Theme.Muted,
-            Margin = new Padding(2, 0, 2, 8),
+            if (e.KeyCode == Keys.Delete)
+            {
+                DeleteAnchorZone();
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.F2)
+            {
+                RenameAnchorZone();
+                e.Handled = true;
+            }
         };
-        var reasonWrap = new FlowLayoutPanel
+        _lvAnchorZones.MouseUp += (_, e) =>
         {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            BackColor = Theme.Bg,
-            Margin = Padding.Empty,
+            if (e.Button != MouseButtons.Right) return;
+            var hit = _lvAnchorZones.GetItemAt(e.X, e.Y);
+            if (hit != null)
+            {
+                hit.Selected = true;
+                hit.Focused = true;
+            }
+            ShowZoneMenu();
         };
-        reasonWrap.Controls.Add(_lblAnchorReason);
-        reasonWrap.Controls.Add(_lblAnchorDetail);
-        side.Controls.Add(reasonWrap, 0, 1);
-
-        // 按钮
-        var buttons = new FlowLayoutPanel
+        _chkAnchorAdv.CheckedChanged += (_, __) =>
         {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            WrapContents = false,
-            BackColor = Theme.Bg,
-            Margin = new Padding(0, 0, 0, 8),
+            var show = _chkAnchorAdv.Checked;
+            if (_pnlAnchorTol != null) _pnlAnchorTol.Visible = show;
+            _tlpAnchorZone.RowStyles[5] = new RowStyle(SizeType.Absolute, show ? 186f : 0f);
+            _tlpAnchorZone.Height = 992 + (show ? 186 : 0);
         };
-        _btnAnchorCalib = Theme.Ghost("拍基准");
-        _btnAnchorCalib.Margin = new Padding(0, 0, 6, 0);
-        _btnAnchorCalib.Click += async (_, __) => await AnchorCalibrateAsync();
-        buttons.Controls.Add(_btnAnchorCalib);
-
-        _btnAnchorJudge = Theme.Primary("判定一次");
-        _btnAnchorJudge.Margin = new Padding(0, 0, 6, 0);
-        _btnAnchorJudge.Click += async (_, __) => await AnchorJudgeOnceAsync();
-        buttons.Controls.Add(_btnAnchorJudge);
-
-        var btnSave = Theme.Ghost("保存容差");
-        btnSave.Margin = new Padding(0, 0, 6, 0);
-        btnSave.Click += (_, __) => SaveAnchorTolerance();
-        buttons.Controls.Add(btnSave);
-
-        var btnOverlay = Theme.Link("叠加：开");
-        btnOverlay.AutoSize = true;
-        btnOverlay.Margin = new Padding(0, 8, 0, 0);
-        btnOverlay.Click += (_, __) =>
+        _btnAnchorZoneSaveTol.Click += (_, __) => SaveAnchorTolerance();
+        _btnAnchorZoneOverlay.Click += (_, __) =>
         {
             _anchorOverlayOn = !_anchorOverlayOn;
-            btnOverlay.Text = _anchorOverlayOn ? "叠加：开" : "叠加：关";
+            _btnAnchorZoneOverlay.Text = _anchorOverlayOn ? "叠加：开" : "叠加：关";
+            if (_anchorRaw != null && !_anchorRaw.Empty()) ShowAnchorFrame(_anchorRaw, _anchorLastVerdict);
         };
-        buttons.Controls.Add(btnOverlay);
-        side.Controls.Add(buttons, 0, 2);
-
-        // 容差
-        side.Controls.Add(AnchorCard("判定容差（像素）", BuildAnchorToleranceGrid(), DockStyle.Top), 0, 3);
-
-        // 锚点表
-        _lvAnchorHits = new ListView
+        _numZoneMatch.ValueChanged += OnZoneParamChanged;
+        _numZoneSearch.ValueChanged += OnZoneParamChanged;
+        _numZoneShift.ValueChanged += OnZoneParamChanged;
+        _cboZoneClass.SelectedIndexChanged += OnZoneParamChanged;
+        _chkZoneRequired.CheckedChanged += OnZoneParamChanged;
+        _numAnchorShift.ValueChanged += (_, __) => ApplyAnchorToleranceToProfile();
+        _numAnchorRot.ValueChanged += (_, __) => ApplyAnchorToleranceToProfile();
+        _numAnchorScale.ValueChanged += (_, __) => ApplyAnchorToleranceToProfile();
+        _numAnchorRms.ValueChanged += (_, __) => ApplyAnchorToleranceToProfile();
+        _numAnchorConf.ValueChanged += (_, __) => ApplyAnchorToleranceToProfile();
+        _numAnchorMin.ValueChanged += (_, __) => ApplyAnchorToleranceToProfile();
+        _hostAnchorZone.VisibleChanged += (_, __) =>
         {
-            Dock = DockStyle.Fill,
-            View = View.Details,
-            FullRowSelect = true,
-            HeaderStyle = ColumnHeaderStyle.Nonclickable,
-            BorderStyle = BorderStyle.None,
-            Font = Theme.Small,
-            BackColor = Theme.Card,
-            ForeColor = Theme.Ink,
+            if (!_hostAnchorZone.Visible) return;
+            // 切到本页只做刷新：框选必须点“框选新范围”才开始，避免一拖就冒出范围。
+            CancelAnchorPicking();
+            RefreshZoneClassCombo();
+            ShowAnchorZones();
+            RefreshZoneRefPreview();
         };
-        _lvAnchorHits.Columns.Add("锚点", 88);
-        _lvAnchorHits.Columns.Add("期望", 82);
-        _lvAnchorHits.Columns.Add("当前", 82);
-        _lvAnchorHits.Columns.Add("偏移", 76);
-        _lvAnchorHits.Columns.Add("置信", 52);
-        side.Controls.Add(AnchorCard("锚点对照", _lvAnchorHits, DockStyle.Fill), 0, 4);
 
-        // 最近记录
-        _lvAnchorLog = new ListView
-        {
-            Dock = DockStyle.Fill,
-            View = View.Details,
-            FullRowSelect = true,
-            HeaderStyle = ColumnHeaderStyle.Nonclickable,
-            BorderStyle = BorderStyle.None,
-            Font = Theme.Small,
-            BackColor = Theme.Card,
-            ForeColor = Theme.Ink,
-        };
-        _lvAnchorLog.Columns.Add("时间", 62);
-        _lvAnchorLog.Columns.Add("结论", 44);
-        _lvAnchorLog.Columns.Add("原因", 132);
-        _lvAnchorLog.Columns.Add("偏移", 108);
-        side.Controls.Add(AnchorCard("最近判定", _lvAnchorLog, DockStyle.Fill), 0, 5);
+        // ---------------- ③ 拍基准 · 对比 ----------------
+        _btnAnchorCalib.Click += async (_, __) => await AnchorCalibrateAsync();
+        _btnAnchorCalibView.Click += (_, __) => ShowAnchorCalibImage();
+        _btnAnchorCalibCompare.Click += async (_, __) => await AnchorCompareCalibAsync();
+        _btnAnchorCalibLive.Click += (_, __) => BackToAnchorLive();
 
-        // 提示
-        var hints = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            BackColor = Theme.Bg,
-            Margin = Padding.Empty,
-        };
-        _lblAnchorCalibInfo = new Label { Text = "基准：还没有拍", AutoSize = true, MaximumSize = new Size(400, 0), Font = Theme.Small, ForeColor = Theme.Muted, Margin = new Padding(2, 0, 2, 2) };
-        _lblAnchorJitter = new Label { Text = "", AutoSize = true, MaximumSize = new Size(400, 0), Font = Theme.Small, ForeColor = Theme.Muted, Margin = new Padding(2, 0, 2, 0) };
-        hints.Controls.Add(_lblAnchorCalibInfo);
-        hints.Controls.Add(_lblAnchorJitter);
-        side.Controls.Add(hints, 0, 6);
-
-        _anchorTip = new ToolTip();
-        return side;
+        if (!_pageAnchor.Controls.Contains(_tlpAnchor)) _pageAnchor.Controls.Add(_tlpAnchor);
     }
 
-    private Control BuildAnchorToleranceGrid()
-    {
-        var grid = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 2,
-            RowCount = 6,
-            BackColor = Theme.Card,
-        };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        for (var i = 0; i < 6; i++) grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        _numAnchorShift = AnchorNum(1, 200, 12, 1, 0);
-        _numAnchorRot = AnchorNum(0.1m, 30, 0.8m, 0.1m, 2);
-        _numAnchorScale = AnchorNum(0.005m, 0.2m, 0.02m, 0.005m, 3);
-        _numAnchorRms = AnchorNum(1, 100, 6, 1, 0);
-        _numAnchorConf = AnchorNum(0.05m, 0.95m, 0.35m, 0.05m, 2);
-        _numAnchorMin = AnchorNum(1, 6, 2, 1, 0);
-
-        AddAnchorRow(grid, 0, "平移上限", _numAnchorShift);
-        AddAnchorRow(grid, 1, "旋转上限 (°)", _numAnchorRot);
-        AddAnchorRow(grid, 2, "间距变化上限", _numAnchorScale);
-        AddAnchorRow(grid, 3, "多点残差 RMS", _numAnchorRms);
-        AddAnchorRow(grid, 4, "检出置信度", _numAnchorConf);
-        AddAnchorRow(grid, 5, "最少锚点数", _numAnchorMin);
-
-        foreach (var num in new[] { _numAnchorShift, _numAnchorRot, _numAnchorScale, _numAnchorRms, _numAnchorConf, _numAnchorMin })
-        {
-            num.ValueChanged += (_, __) => ApplyAnchorToleranceToProfile();
-        }
-        return grid;
-    }
-
-    private static NumericUpDown AnchorNum(decimal min, decimal max, decimal value, decimal step, int decimals) => new NoWheelNumeric()
-    {
-        Minimum = min,
-        Maximum = max,
-        Value = Math.Clamp(value, min, max),
-        Increment = step,
-        DecimalPlaces = decimals,
-        Width = 84,
-        Font = Theme.Body,
-        TextAlign = HorizontalAlignment.Right,
-        Margin = new Padding(0, 2, 0, 2),
-    };
-
-    private static void AddAnchorRow(TableLayoutPanel grid, int row, string text, Control input)
-    {
-        var label = new Label
-        {
-            Text = text,
-            AutoSize = true,
-            ForeColor = Theme.Muted,
-            Font = Theme.Small,
-            Margin = new Padding(0, 6, 6, 2),
-            Anchor = AnchorStyles.Left,
-        };
-        grid.Controls.Add(label, 0, row);
-        grid.Controls.Add(input, 1, row);
-    }
-
-    private static Panel AnchorCard(string title, Control content, DockStyle dock = DockStyle.Top)
-    {
-        var card = new Panel
-        {
-            BackColor = Theme.Card,
-            Dock = dock,
-            Margin = new Padding(0, 0, 0, 8),
-            Padding = new Padding(10, 8, 10, 8),
-        };
-        var autoSize = dock == DockStyle.Top;
-        card.AutoSize = autoSize;
-        if (autoSize) card.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-
-        var grid = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            BackColor = Theme.Card,
-            AutoSize = autoSize,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        grid.RowStyles.Add(autoSize ? new RowStyle(SizeType.AutoSize) : new RowStyle(SizeType.Percent, 100f));
-
-        var head = new Label { Text = title, AutoSize = true, ForeColor = Theme.Muted, Font = Theme.BodyBold, Margin = new Padding(0, 0, 0, 6) };
-        content.Dock = DockStyle.Fill;
-        content.Margin = Padding.Empty;
-        grid.Controls.Add(head, 0, 0);
-        grid.Controls.Add(content, 0, 1);
-        card.Controls.Add(grid);
-        return card;
-    }
 
     // ---------------- 事件接线 ----------------
     private void WireAnchorEvents()

@@ -10,10 +10,6 @@ namespace YoloFool;
 /// <summary>结果筛除（P2）：筛除条件编辑、类别屏蔽、手工删除误检并留存样本。</summary>
 public sealed partial class MainForm
 {
-    private Button _btnFilter;
-    private Button _btnBlockClass;
-    private Button _btnDeleteResult;
-    private Label _lblFilterState;
 
     private IReadOnlyList<DetectionItem> _rawDetections = Array.Empty<DetectionItem>();
     private PredictionResult _lastResult;

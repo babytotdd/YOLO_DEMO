@@ -91,7 +91,9 @@ internal sealed class TrainingService
         Stage?.Invoke("正在导出 ONNX…");
         var exportArgs = new List<string>
         {
-            "export", $"model={bestPt}", "format=onnx", $"imgsz={imgsz}", "opset=12", "simplify=False",
+            // nms=False：YOLO26 导出成端到端 ONNX（[1,300,6]，框已解码、无 NMS 后处理）；
+            // 用 yolov8 基础权重训练时该参数会被忽略，仍导出 [1,84,8400]。
+            "export", $"model={bestPt}", "format=onnx", $"imgsz={imgsz}", "opset=12", "simplify=False", "nms=False",
         };
         code = await RunAsync(AppPaths.YoloExe, exportArgs, Path.GetDirectoryName(bestPt));
         if (_cancelled) return new TrainingOutcome(false, "训练已取消。", RunDir: runDir);
@@ -107,7 +109,9 @@ internal sealed class TrainingService
         try
         {
             using var svc = new InferenceService();
-            svc.Load(new ModelOptions(onnx, YoloModelKind.YOLOv8Det, InferenceBackend.OnnxRuntime, DeviceType.CPU,
+            // 以导出文件为准：YOLO26 端到端是 [1,300,6]，必须用 YOLO26 分支验证，否则会静默出一堆假框。
+            var kind = OnnxInspector.DetectKind(onnx) ?? YoloModelKind.YOLOv8Det;
+            svc.Load(new ModelOptions(onnx, kind, InferenceBackend.OnnxRuntime, DeviceType.CPU,
                 OnnxRuntimeDeviceType.Default, 0.25f, 0.5f));
             svc.Warmup();
         }
@@ -173,6 +177,21 @@ internal sealed class TrainingService
             catch (Exception ex)
             {
                 return "训练环境已装好，但下载 yolov8n.pt 失败：" + ex.Message;
+            }
+        }
+        if (!File.Exists(AppPaths.BaseWeight26))
+        {
+            // 顺带补一份 YOLO26 基础权重：训练优先用它，导出端到端模型（推理更快）。失败不影响已有环境。
+            Stage?.Invoke("正在下载基础权重 yolo26n.pt…");
+            try
+            {
+                using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+                var bytes = await http.GetByteArrayAsync("https://ghfast.top/https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt");
+                await File.WriteAllBytesAsync(AppPaths.BaseWeight26, bytes);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("下载 yolo26n.pt 失败（继续用 yolov8n.pt）：" + ex.Message);
             }
         }
         return "训练环境已就绪。";

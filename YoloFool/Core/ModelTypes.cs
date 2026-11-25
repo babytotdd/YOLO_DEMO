@@ -12,6 +12,7 @@ internal enum YoloModelKind
     YOLOv8Det,
     YOLOv11Det,
     YOLOv8Seg,
+    YOLOv26Det,
 }
 
 /// <summary>一次推理的全部配置。修改设置时必须先构造它并通过验证，不能直接改运行中的模型。</summary>
@@ -25,7 +26,7 @@ internal sealed record ModelOptions(
     float Nms)
 {
     public static IReadOnlyList<YoloModelKind> AllKinds { get; } =
-        new[] { YoloModelKind.YOLOv8Det, YoloModelKind.YOLOv11Det, YoloModelKind.YOLOv8Seg };
+        new[] { YoloModelKind.YOLOv8Det, YoloModelKind.YOLOv11Det, YoloModelKind.YOLOv8Seg, YoloModelKind.YOLOv26Det };
 
     public static IReadOnlyList<DeviceType> AllDevices { get; } =
         new[] { DeviceType.CPU, DeviceType.GPU0 };
@@ -49,6 +50,7 @@ internal sealed record ModelOptions(
         YoloModelKind.YOLOv8Det => "YOLOv8 检测",
         YoloModelKind.YOLOv11Det => "YOLOv11 检测",
         YoloModelKind.YOLOv8Seg => "YOLOv8 分割",
+        YoloModelKind.YOLOv26Det => "YOLO26 检测（端到端）",
         _ => Kind.ToString(),
     };
 
